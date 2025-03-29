@@ -9,10 +9,36 @@ import re
 import threading
 import rclpy
 import cv2
+from scipy.spatial.transform import Rotation as R
+
+from DianUtils.Command import *
+from DianUtils.YawController import *
+
+class RobotYawMotorSender:
+    def __init__(self, node):
+        self.node = node
+
+    def send(self, motor_value: float):
+        n = self.node
+        n.tctr_base[1] = motor_value + 0.0
+        n.publish_messages()
+
+
+class RobotYawMotorReceiver:
+    def __init__(self, node):
+        self.node = node
+
+    def receive(self) -> float:
+        bo = self.node.obs["base_orientation"]
+        corrected_obs = [bo[1], bo[2], bo[3], bo[0]]
+        euler = R.from_quat(corrected_obs).as_euler('zyx', degrees=True)
+        return euler[0]
 
 
 class DianRobot:
     def __init__(self):
+        self.right_arm_target_pose = None
+        self.left_arm_target_pose = None
         self.z_forward = None
         self.x_forward = None
         self.y_forward = None
@@ -22,6 +48,7 @@ class DianRobot:
         self.R1info_floor_idx = ""
         self.R1info_cabinet_dir = ""
         self.R1info_table_dir = ""
+        self.camera_intrinsic = [[327.09, 0, 320], [0, 327.09, 240], [0, 0, 1]]
         # 第一轮游戏箱子的目标位置(底盘位置+物体高度)
         self.R1dst = [0., 0., 0.]
         # 第一轮游戏箱子在橱柜的左右
@@ -44,6 +71,214 @@ class DianRobot:
         self.cabinet_top = 3  # 柜体顶部边距（像素距离）
         self.cabinet_bottom = 5  # 柜体底部边距（像素距离）
         self.model = YOLO(model_path)
+        prize_model_path = "/home/workspace/prize_m.pt"
+        self.grasp_model = YOLO(prize_model_path)
+
+    def create_transform_matrix(self, pos, quat=None, euler=None):
+        # 通过欧拉角或四元数来计算旋转矩阵
+        rot_matrix = np.eye(3)
+        if euler is not None:
+            rot_matrix = R.from_euler('xyz', euler, degrees=False).as_matrix()
+        elif quat is not None:
+            rot_matrix = R.from_quat(quat).as_matrix()
+
+        transform_matrix = np.eye(4)
+        transform_matrix[:3, :3] = rot_matrix
+        transform_matrix[:3, 3] = pos
+        return transform_matrix
+
+    def get_cam_T(self, obs):
+        # Define the local transformations
+        # 使用wxyz四元数计算欧拉角
+        quat_world = obs["base_orientation"]
+        quat_world = [quat_world[1], quat_world[2], quat_world[3], quat_world[0]]  # 重新排列四元数元素
+        euler_wolrd = Rotation.from_quat(quat_world).as_euler("xyz")
+        print("euler_wolrd", euler_wolrd)
+        trans_agv_to_slide = self.create_transform_matrix([0.02371, 0, 0])
+        trans_slide_to_head_yaw = self.create_transform_matrix([0, 0, 1.311 - obs["jq"][2]])
+        trans_head_yaw_to_head_pitch = self.create_transform_matrix([0.18375, 0, 0.023], euler=[0, 0, 1.5708])
+        trans_head_pitch_to_link1 = self.create_transform_matrix([0.00099952, 3.1059e-05, 0.058],
+                                                                 quat=[-0.5, 0.5, -0.5, 0.5])
+        trans_link1_to_cam = self.create_transform_matrix([0.0755, -0.1855, 0], quat=[0.70711, 0., -0.70711, 0])
+        trans_cam_to_head_cam = self.create_transform_matrix([-0.035, 0, 0], euler=[-0.33 - obs["jq"][4], 0, 0])
+        trans_head_cam_to_site = self.create_transform_matrix([0, 0, 0], euler=[-3.1416, 0, 0])
+        trans_head_cam_to_site2 = self.create_transform_matrix([0, 0, 0], euler=[0, 3.1416, 0])
+        # Compute the total transformation from 'agv_link' to 'head_cam'
+        trans_agv_to_head_cam = (
+                trans_agv_to_slide @ trans_slide_to_head_yaw
+                @ trans_head_yaw_to_head_pitch @ trans_head_pitch_to_link1
+                @ trans_link1_to_cam @ trans_cam_to_head_cam @ trans_head_cam_to_site)
+        print("trans_agv_to_cam", trans_agv_to_head_cam)
+        # 截取旋转矩阵计算四元数
+        trans_agv_to_head_cam_ = trans_agv_to_head_cam[:3, :3]
+        quat = Rotation.from_matrix(trans_agv_to_head_cam_).as_quat()
+        print("quat", quat)
+        # 计算欧拉角
+        euler = Rotation.from_matrix(trans_agv_to_head_cam_).as_euler("ZYX")
+        print("euler", euler)
+        return trans_agv_to_head_cam
+
+    def get_grasp_pos(self, obs):
+        detected_objects = self.detect_grasp_objects(obs["img"][0], obs["depth"])
+
+        if len(detected_objects) == 0:
+            print("No object detected!")
+            return None
+        obj = detected_objects[0]
+        print(f"Detected object: {obj['class']} at ({obj['X']},{obj['Y']},{obj['Z']})m")
+        trans_agv_to_head_cam = self.get_cam_T(obs)
+        obj_cam_pos = [obj['X'], obj['Y'], obj['Z']]
+        obj_cam_roll = Rotation.from_euler("ZYX", [0, 0, 0]).as_matrix()
+        obj_euler = Rotation.from_matrix(obj_cam_roll).as_euler("ZYX")
+        print("obj_euler", obj_euler)
+        # 构建物体坐标系在相机坐标系下的变换矩阵
+        obj_cam_T = np.eye(4)
+        obj_cam_T[:3, :3] = obj_cam_roll
+        obj_cam_T[:3, 3] = obj_cam_pos
+        # 计算物体在世界坐标系下的变换矩阵
+        obj_world_T = trans_agv_to_head_cam @ obj_cam_T
+        print("obj_world_T", obj_world_T)
+
+        # 物体坐标系在世界坐标系下的欧拉角
+        obj_world_euler = Rotation.from_matrix(obj_world_T[:3, :3]).as_euler("ZYX")
+        print("obj_world_euler", obj_world_euler)
+
+        # 物体坐标系在世界坐标系下的位置
+        obj_world_pos = obj_world_T[:3, 3]
+        print("obj_world_pos", obj_world_pos)
+        return obj_world_pos
+
+    def postprocess(self, results, orig_img):
+        image = orig_img.copy()
+        detected_objects = []
+        class_names = ["box", "carton", "disk", "sheet", "airbot", "blue_circle", "-1"]
+        for result in results:
+            boxes = result.boxes
+            for box in boxes:
+                if box.conf.item() < 0.7:
+                    continue
+
+                x0, y0, x1, y1 = map(int, box.xyxy[0].cpu().numpy())
+                conf = box.conf.item()
+                cls_id = int(box.cls.item())
+                if class_names[cls_id] != self.R1info_prop_name:
+                    continue
+                obj_info = {
+                    'class': class_names[cls_id],
+                    'confidence': conf,
+                    'x': int((x0 + x1) / 2),
+                    'y': int((y0 + y1) / 2),
+                    'w': int(x1 - x0),
+                    'h': int(y1 - y0)
+                }
+                detected_objects.append(obj_info)
+                color = (0, 255, 0)
+                cv2.rectangle(image, (x0, y0), (x1, y1), color, 2)
+
+        return image, detected_objects
+
+    def detect_grasp_objects(self, rgb_image, img_depth):
+        results = self.grasp_model(rgb_image, verbose=False)
+        image, detected_objects = self.postprocess(results, rgb_image)
+        # print(f"inference time: {inference_time:.2f}ms")
+
+        fx = self.camera_intrinsic[0][0]
+        fy = self.camera_intrinsic[1][1]
+        cx = self.camera_intrinsic[0][2]
+        cy = self.camera_intrinsic[1][2]
+        for obj in detected_objects:
+            center_x = obj['x']
+            center_y = obj['y']
+            depth_m = img_depth[center_y, center_x]  # mm -> m
+            # X->right，Y->down Z->forward
+            Z = depth_m / 1000.0
+            X = (center_x - cx) * Z / fx
+            Y = (center_y - cy) * Z / fy
+            obj.update({
+                'X': X,
+                'Y': Y,
+                'Z': Z
+            })
+        cv2.imwrite("grasp_detect.jpg", image)
+        return detected_objects
+
+    def catch_prop(self, pos, observe, robot):
+        prop_bias = [0.03, 0, 0.1]
+        if self.R1info_prop_name == "carton":
+            prop_bias = [0.04, 0, 0.1]
+            observe = self.gripper_control(observe, robot, "both", "open", 1.0)
+        elif self.R1info_prop_name == "disk":
+            prop_bias = [0.03, 0, 0.1]
+            observe = self.gripper_control(observe, robot, "both", "open", 0.4)
+        elif self.R1info_prop_name == "sheet":
+            prop_bias = [0.03, 0, 0.1]
+            observe = self.gripper_control(observe, robot, "both", "open", 0.4)
+        if self.R1info_table_dir == "left":
+            left_arm_target_pose = pos + prop_bias
+            left_arm_target_euler = [0., 0.8, -np.pi]
+            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_target_pose, "pick", "l",
+                                                                       observe["jq"][2], np.array(observe["jq"][5:11]),
+                                                                       Rotation.from_euler('zyx',
+                                                                                           left_arm_target_euler).as_matrix())
+            robot.target_control[5:11] = left_arm_joint
+            observe = self.robot_pause(robot,100)
+                # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+
+            prop_height = -0.1
+            step_num = 100
+            left_arm_target_pose[2] = left_arm_target_pose[2] + prop_height / step_num
+            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_target_pose, "pick", "l",
+                                                                       observe["jq"][2],
+                                                                       np.array(observe["jq"][5:11]),
+                                                                       Rotation.from_euler('zyx',
+                                                                                           left_arm_target_euler).as_matrix())
+            robot.target_control[5:11] = left_arm_joint
+
+            observe = self.robot_pause(robot,100)
+                # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+
+            self.gripper_control(observe, robot, "l", "close")
+            self.height_control(observe, robot, 0, 200)
+        else:
+            right_arm_target_pose = pos + prop_bias
+            right_arm_target_euler = [0., 0.8, np.pi]
+            right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_target_pose, "pick", "r",
+                                                                        observe["jq"][2],
+                                                                        np.array(observe["jq"][12:18]),
+                                                                        Rotation.from_euler('zyx',
+                                                                                            right_arm_target_euler).as_matrix())
+            robot.target_control[12:18] = right_arm_joint
+            observe = self.robot_pause(robot,100)
+                # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+
+            prop_height = -0.1
+            step_num = 100
+            for i in range(step_num):
+                right_arm_target_pose[2] = right_arm_target_pose[2] + prop_height / step_num
+                right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_target_pose, "pick", "r",
+                                                                            observe["jq"][2],
+                                                                            np.array(observe["jq"][12:18]),
+                                                                            Rotation.from_euler('zyx',
+                                                                                                right_arm_target_euler).as_matrix())
+                robot.target_control[12:18] = right_arm_joint
+                observe = self.robot_pause(robot,1)
+                # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+
+            self.gripper_control(observe, robot, "r", "close")
+            self.height_control(observe, robot, 0, 200)
+        return observe
+
+
+    def put_prop(self, observe, robot):
+        if self.R1info_table_dir == "left":
+            observe = self.base_rotate(observe, -90, robot)
+        else:
+            observe = self.base_rotate(observe, 0, robot)
+        # 放置物体
+        observe = self.height_control(observe, robot, 0.25, 200)
+        # 松开夹爪
+        observe = self.gripper_control(observe, robot, "both", "open")
+        return observe
 
     def get_box_pos(self, observe, robot, is_first_call=True):
         # TODO：根据图像获得小物体的位置
@@ -86,7 +321,6 @@ class DianRobot:
         # 获取目标位置信息
         self.R1dst[0] = self.cabinet_position.get(self.R1info_cabinet_dir)[0]
         self.R1dst[1] = self.cabinet_position.get(self.R1info_cabinet_dir)[1]
-        # cv2.waitKey(0)
         # 恢复机器人原始位置
         robot.target_control[2] = 0.
         robot.target_control[4] = 0.
@@ -166,6 +400,7 @@ class DianRobot:
         pass
 
     def set_origin_pos(self, observe, robot):
+        # self.R1dst_dirc = "left"
         if self.R1dst_dirc == "left":
             self.lft_arm_ori_pose = np.array([0.520, 0.238, 1.2])
             self.right_arm_ori_pose = np.array([0.520, 0.070, 1.2])
@@ -205,12 +440,16 @@ class DianRobot:
 
     def catch_box(self, observe, robot):
         # TODO：根据小物体的位置，调整机械臂的位置，抓取小物体
+        step_num = 100
+        left_arm_target_pose = np.array([0, 0, 0])
+        right_arm_target_pose = np.array([0, 0, 0])
         # x ,y ,z的增量
         if self.R1info_cabinet_dir == "right":
-            base_pos = [0.614, 0.393]
+            print("base pos:", observe["base_position"])
+            base_pos = [0.605, 0.40]
             self.x_forward = 0.15 + base_pos[0] - observe["base_position"][0]
-            self.y_forward = 0.0 + base_pos[1] - observe["base_position"][1]
-            self.z_forward = -0.035
+            self.y_forward = 0.01 + base_pos[1] - observe["base_position"][1]
+            self.z_forward = -0.05
         else:
             base_pos = [0.370, 0.613]
             self.x_forward = 0.15 + base_pos[0] - observe["base_position"][0]
@@ -218,19 +457,15 @@ class DianRobot:
             self.z_forward = -0.05
         # 增量
         forward = np.array([self.x_forward, self.y_forward, self.z_forward])
-        step = 0
-        step_num = 100
-        while step < step_num:
-            if robot.data_renew is False:
-                time.sleep(0.002)
-                continue
-            robot.data_renew = False
-            step += 1
+
+        for step in range(step_num):
             left_arm_target_pose = self.lft_arm_ori_pose + forward * step / step_num
             right_arm_target_pose = self.right_arm_ori_pose + forward * step / step_num
             # 保持相对高度不变
             left_arm_target_pose[2] = left_arm_target_pose[2] - observe["jq"][2]
             right_arm_target_pose[2] = right_arm_target_pose[2] - observe["jq"][2]
+            # print("observe[jq]",observe["jq"])
+            # print("left_arm_target_pose[2]", left_arm_target_pose[2])
             left_arm_target_euler = np.array([0, 0.93584134, 1.6])
             left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_target_pose, "pick", "l",
                                                                        observe["jq"][2], np.array(observe["jq"][5:11]),
@@ -245,35 +480,112 @@ class DianRobot:
                                                                         Rotation.from_euler('zyx',
                                                                                             right_arm_target_euler).as_matrix())
             robot.target_control[12:18] = right_arm_joint
-            observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+            observe = self.robot_pause(robot,1)
 
+        self.left_arm_target_pose = left_arm_target_pose
+        self.right_arm_target_pose = right_arm_target_pose
         observe = self.gripper_control(observe, robot, "both", "close")
         return observe
 
-    def gripper_control(self, observe, robot, arm, direction):
+    def IK_gripper(self,observe,robot,left_ori_pos,left_target_pos,right_ori_pos,right_target_pos,step_num=1000):
+        # 根据左右机械臂选择关节索引及欧拉角
+        # arm_config = {'l': {'index':(5, 11), 'euler': np.array([0, 0.93584134, 1.6])},
+        #                 'r': {'index':(12, 18), 'euler': np.array([0, 0.93584134, -1.6])}
+        #               }
+        # start_idx, end_idx = arm_config[arm]['index']
+        # target_euler = arm_config[arm]['euler']
+        left_target_euler = np.array([0, 0.93584134, 1.6])
+        right_target_euler = np.array([0, 0.93584134, -1.6])
+        left_arm_pos = left_ori_pos.copy()
+        right_arm_pos = right_ori_pos.copy()
+
+        for step in range(step_num):
+            left_arm_pos[0] = left_ori_pos[0] + (left_target_pos[0] - left_ori_pos[0]) * step / step_num
+            left_arm_pos[1] = left_ori_pos[1] + (left_target_pos[1] - left_ori_pos[1]) * step / step_num
+            left_arm_pos[2] = left_ori_pos[2] + (left_target_pos[2] - left_ori_pos[2]) * step / step_num
+            right_arm_pos[0] = right_ori_pos[0] + (right_target_pos[0] - right_ori_pos[0]) * step / step_num
+            right_arm_pos[1] = right_ori_pos[1] + (right_target_pos[1] - right_ori_pos[1]) * step / step_num
+            right_arm_pos[2] = right_ori_pos[2] + (right_target_pos[2] - right_ori_pos[2]) * step / step_num
+            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_pos, "pick",'l',
+                                                                       observe["jq"][2],
+                                                                       np.array(observe["jq"][5:11]),
+                                                                       Rotation.from_euler('zyx',
+                                                                                           left_target_euler).as_matrix())
+            right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_pos, "pick",'r',
+                                                                       observe["jq"][2],
+                                                                       np.array(observe["jq"][12:18]),
+                                                                       Rotation.from_euler('zyx',
+                                                                                           right_target_euler).as_matrix())
+            robot.target_control[5:11] = left_arm_joint
+            robot.target_control[12:18] = right_arm_joint
+            observe = self.robot_pause(robot, 1)
+        return observe
+
+    # 移动夹爪至中间位置
+    def middle_reset(self, observe, robot):
+        left_ori_pose = self.left_arm_target_pose
+        right_ori_pose = self.right_arm_target_pose
+        left_target_pose = self.left_arm_target_pose.copy()
+        right_target_pose = self.right_arm_target_pose.copy()
+        left_target_pose[1] = (self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005)/2
+        right_target_pose[1] = -(self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005)/2
+        self.IK_gripper(observe,robot,left_ori_pose,left_target_pose,right_ori_pose,right_target_pose,100)
+        self.height_control(observe, robot, 0)
+        return observe
+    def height_control(self, observe, robot, targrt_height, step_num=50):
+        height = observe["jq"][2]
+        for step in range(step_num):
+            robot.target_control[2] = (targrt_height - height) * step / step_num + height
+            observe = self.robot_pause(robot,1)
+            # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+        return observe
+
+    def reset_arm(self, observe, robot):
+        robot.target_control[5:11] = [-0.0, -0.166, 0.032, 0.0, 1.5708, 2.223]
+        robot.target_control[12:18] = [-0.0, -0.166, 0.032, 0.0, -1.5708, -2.223]
+        robot.target_control[2] = 0.25
+        observe = self.robot_pause(robot,100)
+        return observe
+    def head_control(self, observe, robot, target_angle):
+        robot.target_control[4] = target_angle
+        observe = self.robot_pause(robot,100)
+        return observe
+    def gripper_control(self, observe, robot, arm, direction, open_size=0.5):
+        left_size_ori = observe["jq"][11]
+        right_size_ori = observe["jq"][18]
+        left_size_target = left_size_ori
+        right_size_target = right_size_ori
+        print("left_size_ori", left_size_ori)
+        print("right_size_ori", right_size_ori)
+
         if arm == "left":
             if direction == "open":
-                robot.target_control[11] = 0.5
+                left_size_target = open_size
             elif direction == "close":
-                robot.target_control[11] = 0.
+                left_size_target = 0
         elif arm == "right":
             if direction == "open":
-                robot.target_control[18] = 0.5
+                right_size_target = open_size
             elif direction == "close":
-                robot.target_control[18] = 0.
+                right_size_target = 0
         else:
             if direction == "open":
-                robot.target_control[11] = 0.5
-                robot.target_control[18] = 0.5
+                right_size_target = open_size
+                left_size_target = open_size
             elif direction == "close":
-                robot.target_control[11] = 0.
-                robot.target_control[18] = 0.
-
-        self.robot_pause(robot, 100)
+                right_size_target = 0
+                left_size_target = 0
+        step_num = 10
+        for step in range(step_num):
+            robot.target_control[11] = left_size_ori + (left_size_target - left_size_ori) * step / step_num
+            robot.target_control[18] = right_size_ori + (right_size_target - right_size_ori) * step / step_num
+            observe = self.robot_pause(robot,2)
+            # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
         return observe
 
     def robot_pause(self, robot, num=20):
         _ = 0
+        observe = None
         while _ < num:
             if robot.data_renew is False:
                 time.sleep(0.002)
@@ -295,14 +607,18 @@ class DianRobot:
                 continue
             robot.data_renew = False
             # 计算目的地距离
-            dis = destination[direction] - observe["base_position"][direction]
+            dis = destination[direction % 2] - observe["base_position"][direction % 2]
             if abs(dis) > 0.05:
                 cool_down = False
                 robot.target_control[0] = 5 * dis / abs(dis) * min(max(dis ** 2, 0.04), 0.5)
+                if direction / 2 == 1:
+                    robot.target_control[0] = -robot.target_control[0]
                 observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
             elif abs(dis) > 0.01:
                 cool_down = False
                 robot.target_control[0] = 0.02 * dis / abs(dis)
+                if direction / 2 == 1:
+                    robot.target_control[0] = -robot.target_control[0]
                 observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
             else:
                 if cool_down:
@@ -323,19 +639,21 @@ class DianRobot:
                 time.sleep(0.002)
                 continue
             robot.data_renew = False
-            euler = Rotation.from_quat(observe["base_orientation"]).as_euler('zyx', degrees=True)
+            bo = observe["base_orientation"]
+            corrected_obs = [bo[1], bo[2],bo[3], bo[0]]
+            euler = Rotation.from_quat(corrected_obs).as_euler('xyz', degrees=True)
             if target_angle - euler[2] > 0:
                 if target_angle - euler[2] > 180:
                     dis = 360 - target_angle + euler[2]
+                    dis = -dis
                 else:
                     dis = target_angle - euler[2]
-                    dis = -dis
             if target_angle - euler[2] <= 0:
                 if target_angle - euler[2] < -180:
                     dis = 360 + target_angle - euler[2]
+                    dis = -dis
                 else:
                     dis = target_angle - euler[2]
-                    dis = -dis
             if abs(dis) > 5:
                 cool_down = False
                 # 速度衰减二次函数
@@ -385,6 +703,20 @@ class DianRobot:
         return self.R1dst
 
 
+def robot_do(command : Command):
+    frequency = 50.0
+    name = command.description
+    start = time.time()
+    print("start command({}) at {}s".format(name, start))
+    while not command.is_done():
+        command.execute(time.time())
+        command.feedback()
+        time.sleep(1.0 / frequency)
+
+    end = time.time()
+    print("end command({}) at {}s, cost {}s".format(name, end, end - start))
+
+
 def main(args=None):
     rclpy.init(args=args)
     exec_robot = DianRobotNode()
@@ -392,22 +724,30 @@ def main(args=None):
     spin_thead.start()
     # pub_thread = threading.Thread(target=exec_robot.pub_thread)
     # pub_thread.start()
-
     policy = DianRobot()
     #指令解析
     while exec_robot.task_info is None:
         pass
     dst = policy.solve_rule(exec_robot.task_info)
+    # region my commands
+    node = exec_robot
+    turn_robot_command = TurnRobotCommand()
+    turn_robot_command.control_sender = RobotYawMotorSender(node)
+    turn_robot_command.motor_receiver = RobotYawMotorReceiver(node)
+    turn_robot_command.yaw_controller.set_current(-90.0)
+    turn_robot_command.yaw_controller._target_pos = 90.0
+    turn_robot_command.yaw_controller._tolerance = 0.1
+    # endregion my commands
+    robot_do(turn_robot_command)
+
 
     # 前往观测位置
     obs = policy.gripper_control(exec_robot.obs, exec_robot, "both", "open")
-    obs = policy.base_rotate(exec_robot.obs, 90, exec_robot)
-    obs = policy.robot_pause(exec_robot)
     obs = policy.base_forward(exec_robot.obs, 1, exec_robot, [0, 0.4, policy.R1dst[2]])
     obs = policy.robot_pause(exec_robot)
-    obs = policy.base_rotate(exec_robot.obs, 180, exec_robot)
+    obs = policy.base_rotate(exec_robot.obs, 0, exec_robot)
     obs = policy.robot_pause(exec_robot)
-    obs = policy.base_rotate(exec_robot.obs, 180, exec_robot)
+    obs = policy.base_rotate(exec_robot.obs, 0, exec_robot)
 
     # 通过图片解析箱子位置
     obs = policy.get_box_pos(obs, exec_robot, is_first_call=True)
@@ -415,13 +755,32 @@ def main(args=None):
         # 观测目标位置并根据箱子左右初始化夹爪位置
         obs = policy.set_origin_pos(obs, exec_robot)
         obs = policy.robot_pause(exec_robot)
-        obs = policy.base_rotate(obs, 180, exec_robot)
+        obs = policy.base_rotate(obs, 0, exec_robot)
         obs = policy.robot_pause(exec_robot)
         obs = policy.base_forward(obs, 0, exec_robot)
         obs = policy.robot_pause(exec_robot)
-        obs = policy.base_rotate(obs, 180, exec_robot)
+        obs = policy.base_rotate(obs, 0, exec_robot)
         obs = policy.catch_box(obs, exec_robot)
+        print("status done: catch box")
         obs = policy.base_forward(obs, 0, exec_robot, [policy.R1dst[0] - 0.3, policy.R1dst[1], policy.R1dst[2]])
+        print("准备置位")
+        obs = policy.middle_reset(obs, exec_robot)
+        print("status done: middle reset")
+        print("准备回位置")
+        obs = policy.base_rotate(obs, -90, exec_robot)
+        obs = policy.base_rotate(obs, -140, exec_robot)
+        obs = policy.base_forward(obs, 2, exec_robot, [-0.10, 0, policy.R1dst[2]])
+        obs = policy.robot_pause(exec_robot)
+        print("准备放置")
+        obs = policy.height_control(obs, exec_robot, 0.26)
+        obs = policy.robot_pause(exec_robot)
+        print("松开夹爪")
+        obs = policy.gripper_control(obs, exec_robot, "both", "open", open_size=0.4)
+        obs = policy.robot_pause(exec_robot)
+        print("抬起机械臂")
+        obs = policy.height_control(obs, exec_robot, 0)
+        obs = policy.robot_pause(exec_robot)
+
     else:
         obs = policy.base_forward(obs, 0, exec_robot)
         obs = policy.robot_pause(exec_robot)
@@ -431,7 +790,8 @@ def main(args=None):
         obs = policy.robot_pause(exec_robot)
         # 通过图片解析箱子位置
         obs = policy.get_box_pos(obs, exec_robot, is_first_call=False)
-        # 根据箱子左右初始化夹爪位置
+        # 观测目标位置并根据箱子左右初始化夹爪位置
+        # obs = policy.get_box_pos(obs, exec_robot)
         obs = policy.set_origin_pos(obs, exec_robot)
         obs = policy.robot_pause(exec_robot)
         obs = policy.base_rotate(obs, 90, exec_robot)
@@ -439,8 +799,33 @@ def main(args=None):
         obs = policy.base_forward(obs, 1, exec_robot)
         obs = policy.robot_pause(exec_robot)
         obs = policy.base_rotate(obs, 90, exec_robot)
+        obs = policy.robot_pause(exec_robot)
         obs = policy.catch_box(obs, exec_robot)
-        obs = policy.base_forward(obs, 1, exec_robot, [policy.R1dst[0], policy.R1dst[1] - 0.3, policy.R1dst[2]])
+        obs = policy.base_forward(obs, 1, exec_robot, [policy.R1dst[0], policy.R1dst[1] - 0.4, policy.R1dst[2]])
+        obs = policy.middle_reset(obs, exec_robot)
+        print("准备回位置")
+        obs = policy.base_rotate(obs, 10, exec_robot)
+        obs = policy.base_rotate(obs, -35, exec_robot)
+        obs = policy.base_forward(obs, 2, exec_robot, [-0.09, 0, policy.R1dst[2]])
+        obs = policy.robot_pause(exec_robot)
+        print("准备放置")
+        obs = policy.height_control(obs, exec_robot, 0.26)
+        obs = policy.robot_pause(exec_robot)
+        print("松开夹爪")
+        obs = policy.gripper_control(obs, exec_robot, "both", "open", open_size=0.4)
+        print("抬起机械臂")
+        obs = policy.height_control(obs, exec_robot, 0)
+        obs = policy.robot_pause(exec_robot)
+    print("机械臂回到初始位置")
+    obs = policy.reset_arm(obs, exec_robot)
+    print("观察视角")
+    obs = policy.head_control(obs, exec_robot, 0.2)
+    obs = policy.base_forward(obs, 2, exec_robot, [-0.2, 0, policy.R1dst[2]])
+    prop_pos = policy.get_grasp_pos(obs)
+    if prop_pos is not None:
+        obs = policy.height_control(obs, exec_robot, 0.1, step_num=200)
+        obs = policy.catch_prop(prop_pos, obs, exec_robot)
+        obs = policy.put_prop(obs, exec_robot)
     spin_thead.join()
     # pub_thread.join()
 

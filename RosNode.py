@@ -10,6 +10,8 @@ from std_msgs.msg import String
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Float64MultiArray
 from rosgraph_msgs.msg import Clock
+from scipy.spatial.transform import Rotation as R
+
 
 class DianRobotNode(Node):
     def __init__(self):
@@ -41,6 +43,8 @@ class DianRobotNode(Node):
         }
         self.init_subscription()
         self.init_publisher()
+
+
     def init_subscription(self):
         self.subscription_clock = self.create_subscription(
             Clock, '/clock', self.clock_callback, 10)
@@ -125,8 +129,10 @@ class DianRobotNode(Node):
 
     def head_depth_camera_info_callback(self, msg):
         # mmk2机器人头部深度相机 内参
+        # if self.logger:
         if self.logger:
             self.get_logger().info('Received head depth camera info: %s' % msg)
+
 
     def head_depth_image_callback(self, msg):
         # mmk2机器人头部深度相机 图像和rgb图像对齐，编码格式为mono16，单位毫米
@@ -143,7 +149,6 @@ class DianRobotNode(Node):
             cv2.waitKey(1)
         if self.logger:
             self.get_logger().info('Received head depth image, height: %d, width: %d, ' % (msg.height, msg.width))
-
 
     def head_rgb_camera_info_callback(self, msg):
         # mmk2机器人头部RGB相机 内参
@@ -216,7 +221,6 @@ class DianRobotNode(Node):
         orientation_w = msg.pose.pose.orientation.w
         self.obs["base_orientation"] = [orientation_w, orientation_x, orientation_y, orientation_z]
 
-
         # 打印相关信息
         if self.logger:
             self.get_logger().info('Received odometry:')
@@ -249,18 +253,20 @@ class DianRobotNode(Node):
         self.obs["jq"][2:] = msg.position
         if self.logger:
             self.get_logger().info('Received joint states: %s' % msg)
-        self.get_logger().info('data renew')
+        # self.get_logger().info('data renew')
         self.data_renew = True
 
     def taskinfo_callback(self, msg):
         # 任务信息
         self.task_renew = True
         self.task_info = msg.data
-        self.get_logger().info('Received task info: %s' % msg)
+        # self.get_logger().info('Received task info: %s' % msg)
+        pass
 
     def gameinfo_callback(self, msg):
         # 当前比赛的任务完成情况
-        self.get_logger().info('Received game info: %s' % msg)
+        # self.get_logger().info('Received game info: %s' % msg)
+        pass
 
 
 def main(args=None):
