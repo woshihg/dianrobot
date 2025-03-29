@@ -105,8 +105,16 @@ class DianRobotNode(Node):
         float_array_msg_spine.data = self.tctr_slide  # Adjust with desired values
         self.publisher_spine.publish(float_array_msg_spine)
 
+    # @note this control value is like the acceleration but not exactly, take with caution
+    def set_robot_chassis_omega_magic_value(self, value):
+        self.tctr_base[1] = value + 0.0
+
+    def set_robot_chassis_speed_magic_value(self, value):
+        self.tctr_base[0] = value + 0.0
+
     def step(self, target_control):
         # 1. 通过发布消息控制机器人
+
         self.tctr_base = target_control[:2]
         self.tctr_slide = target_control[2:3]
         self.tctr_head = target_control[3:5]

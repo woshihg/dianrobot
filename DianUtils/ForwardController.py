@@ -19,7 +19,7 @@ class ForwardController:
         direction = np.dot(delta, origin_delta)
         if direction < 0:
             abs_delta = -abs_delta
-        return abs_delta * 0.005
+        return abs_delta * 5
 
     def check_is_done(self) -> bool:
         delta = self._target_pos - self._current_pos
@@ -44,20 +44,31 @@ class ForwardController:
     def get_origin_pos(self):
         return self._origin_pos
 
-    def set_target(self, target):
-        self._target_pos = target
+    def set_target(self, target: np.array):
+        if not isinstance(target, np.ndarray):
+            target = np.array(target)
+        self._target_pos = target.copy()
+        return self
 
-    def set_current(self, current):
-        self._current_pos = current
+    def set_current(self, current: np.array):
+        if not isinstance(current, np.ndarray):
+            current = np.array(current)
+        self._current_pos = current.copy()
+        return self
 
     def set_ratio(self, ratio):
         self._ratio = ratio
+        return self
 
     def set_tolerance(self, tolerance):
         self._tolerance = tolerance
+        return self
 
-    def set_origin_pos(self, origin_pos):
-        self._origin_pos = origin_pos
+    def set_origin(self, origin: np.array):
+        if not isinstance(origin, np.ndarray):
+            origin = np.array(origin)
+        self._origin_pos = origin.copy()
+        return self
 
     # endregion Getters and Setters
 
@@ -74,6 +85,6 @@ class ForwardMotorReceiver:
     def __init__(self):
         pass
 
-    def receive(self) -> float:
+    def receive(self) -> np.array:
         pass
 

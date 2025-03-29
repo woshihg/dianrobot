@@ -10,58 +10,62 @@ def _cut_angle(angle: float) -> float:
 class YawController:
     def __init__(self):
         # ranged form -180.0 to 180.0
-        self.target_yaw = 0.0
-        self.__current_yaw__ = 0.0
-        self.tolerance = 0.1
-        self.ratio = 0.5
+        self._target_yaw = 0.0
+        self._current_yaw = 0.0
+        self._tolerance = 0.1
+        self._ratio = 0.5
 
     # @brief 计算当前目标角度
     # @return float 当前最佳的输出电机值
     def calc_current_target(self) -> float:
-        delta = self.target_yaw - self.__current_yaw__
+        delta = self._target_yaw - self._current_yaw
         abs_delta = abs(delta)
         if abs_delta > 180.0:
             delta = 360.0 - abs_delta
             abs_delta = delta
 
-        if abs_delta < self.tolerance:
+        if abs_delta < self._tolerance:
             return 0
         return delta * 0.005
 
     def check_is_done(self) -> bool:
-        delta = self.target_yaw - self.__current_yaw__
+        delta = self._target_yaw - self._current_yaw
         abs_delta = abs(delta)
         if abs_delta > 180.0:
             delta = 360.0 - abs_delta
             abs_delta = delta
 
-        return abs_delta < self.tolerance
+        return abs_delta < self._tolerance
 
     # region Getters and Setters
 
     def get_target(self):
-        return self.target_yaw
+        return self._target_yaw
 
     def get_current(self):
-        return self.__current_yaw__
+        return self._current_yaw
 
     def get_ratio(self):
-        return self.ratio
+        return self._ratio
 
     def get_tolerance(self):
-        return self.tolerance
+        return self._tolerance
 
     def set_target(self, target):
-        self.target_yaw = _cut_angle(target)
+        self._target_yaw = _cut_angle(target)
+        return self
 
     def set_current(self, current):
-        self.__current_yaw__ = _cut_angle(current)
+        self._current_yaw = _cut_angle(current)
+        return self
 
     def set_ratio(self, ratio):
-        self.ratio = ratio
+        self._ratio = ratio
+        return self
 
     def set_tolerance(self, tolerance):
-        self.tolerance = tolerance
+        self._tolerance = tolerance
+        return self
 
     # endregion Getters and Setters
 

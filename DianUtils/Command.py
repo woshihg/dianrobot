@@ -79,15 +79,19 @@ class TurnRobotCommand(Command):
         self.control_sender.send(0)
         return self.supervisor.update(time.time())
 
-class MoveRobotCommand(Command):
+class ForwardRobotCommand(Command):
     def __init__(self):
         super().__init__()
-        self.description = "move robot command"
-        self.forward_controller = ForwardController()
-        self.signal_generator = SignalGenerator()
+        self.description = "forward robot command"
         self.control_sender = ForwardControlSender()
         self.motor_receiver = ForwardMotorReceiver()
+
+        self.forward_controller = ForwardController()
+        self.signal_generator = SignalGenerator()
+        self.signal_generator.set_interval(8)
+
         self.supervisor = TimeSpan()
+        self.supervisor.duration = 2.0
 
     def execute(self, current_time: float):
         #print("executing command: ", self.description)

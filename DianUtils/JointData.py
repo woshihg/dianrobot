@@ -8,7 +8,6 @@ def _pick_motor_angles(target : Transform3, is_right : bool, my_height: float, m
     )
     return np.array(angles)
 
-
 class JointData:
     def __init__(self, is_right: bool = False, my_transform: Transform3 = Transform3(), motor_angles: np.array = np.zeros(6)):
         self.is_right = is_right

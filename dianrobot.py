@@ -1,5 +1,6 @@
 import time
 
+from DianUtils.RobotIO import *
 from RosNode import DianRobotNode
 from scipy.spatial.transform import Rotation
 from discoverse.mmk2 import MMK2FIK
@@ -13,26 +14,6 @@ from scipy.spatial.transform import Rotation as R
 
 from DianUtils.Command import *
 from DianUtils.YawController import *
-
-class RobotYawMotorSender:
-    def __init__(self, node):
-        self.node = node
-
-    def send(self, motor_value: float):
-        n = self.node
-        n.tctr_base[1] = motor_value + 0.0
-        n.publish_messages()
-
-
-class RobotYawMotorReceiver:
-    def __init__(self, node):
-        self.node = node
-
-    def receive(self) -> float:
-        bo = self.node.obs["base_orientation"]
-        corrected_obs = [bo[1], bo[2], bo[3], bo[0]]
-        euler = R.from_quat(corrected_obs).as_euler('zyx', degrees=True)
-        return euler[0]
 
 
 class DianRobot:
@@ -221,8 +202,8 @@ class DianRobot:
                                                                        Rotation.from_euler('zyx',
                                                                                            left_arm_target_euler).as_matrix())
             robot.target_control[5:11] = left_arm_joint
-            observe = self.robot_pause(robot,100)
-                # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+            observe = self.robot_pause(robot, 100)
+            # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
 
             prop_height = -0.1
             step_num = 100
@@ -234,8 +215,8 @@ class DianRobot:
                                                                                            left_arm_target_euler).as_matrix())
             robot.target_control[5:11] = left_arm_joint
 
-            observe = self.robot_pause(robot,100)
-                # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+            observe = self.robot_pause(robot, 100)
+            # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
 
             self.gripper_control(observe, robot, "l", "close")
             self.height_control(observe, robot, 0, 200)
@@ -248,8 +229,8 @@ class DianRobot:
                                                                         Rotation.from_euler('zyx',
                                                                                             right_arm_target_euler).as_matrix())
             robot.target_control[12:18] = right_arm_joint
-            observe = self.robot_pause(robot,100)
-                # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+            observe = self.robot_pause(robot, 100)
+            # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
 
             prop_height = -0.1
             step_num = 100
@@ -261,13 +242,12 @@ class DianRobot:
                                                                             Rotation.from_euler('zyx',
                                                                                                 right_arm_target_euler).as_matrix())
                 robot.target_control[12:18] = right_arm_joint
-                observe = self.robot_pause(robot,1)
+                observe = self.robot_pause(robot, 1)
                 # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
 
             self.gripper_control(observe, robot, "r", "close")
             self.height_control(observe, robot, 0, 200)
         return observe
-
 
     def put_prop(self, observe, robot):
         if self.R1info_table_dir == "left":
@@ -480,14 +460,14 @@ class DianRobot:
                                                                         Rotation.from_euler('zyx',
                                                                                             right_arm_target_euler).as_matrix())
             robot.target_control[12:18] = right_arm_joint
-            observe = self.robot_pause(robot,1)
+            observe = self.robot_pause(robot, 1)
 
         self.left_arm_target_pose = left_arm_target_pose
         self.right_arm_target_pose = right_arm_target_pose
         observe = self.gripper_control(observe, robot, "both", "close")
         return observe
 
-    def IK_gripper(self,observe,robot,left_ori_pos,left_target_pos,right_ori_pos,right_target_pos,step_num=1000):
+    def IK_gripper(self, observe, robot, left_ori_pos, left_target_pos, right_ori_pos, right_target_pos, step_num=1000):
         # 根据左右机械臂选择关节索引及欧拉角
         # arm_config = {'l': {'index':(5, 11), 'euler': np.array([0, 0.93584134, 1.6])},
         #                 'r': {'index':(12, 18), 'euler': np.array([0, 0.93584134, -1.6])}
@@ -506,16 +486,16 @@ class DianRobot:
             right_arm_pos[0] = right_ori_pos[0] + (right_target_pos[0] - right_ori_pos[0]) * step / step_num
             right_arm_pos[1] = right_ori_pos[1] + (right_target_pos[1] - right_ori_pos[1]) * step / step_num
             right_arm_pos[2] = right_ori_pos[2] + (right_target_pos[2] - right_ori_pos[2]) * step / step_num
-            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_pos, "pick",'l',
+            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_pos, "pick", 'l',
                                                                        observe["jq"][2],
                                                                        np.array(observe["jq"][5:11]),
                                                                        Rotation.from_euler('zyx',
                                                                                            left_target_euler).as_matrix())
-            right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_pos, "pick",'r',
-                                                                       observe["jq"][2],
-                                                                       np.array(observe["jq"][12:18]),
-                                                                       Rotation.from_euler('zyx',
-                                                                                           right_target_euler).as_matrix())
+            right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_pos, "pick", 'r',
+                                                                        observe["jq"][2],
+                                                                        np.array(observe["jq"][12:18]),
+                                                                        Rotation.from_euler('zyx',
+                                                                                            right_target_euler).as_matrix())
             robot.target_control[5:11] = left_arm_joint
             robot.target_control[12:18] = right_arm_joint
             observe = self.robot_pause(robot, 1)
@@ -527,16 +507,17 @@ class DianRobot:
         right_ori_pose = self.right_arm_target_pose
         left_target_pose = self.left_arm_target_pose.copy()
         right_target_pose = self.right_arm_target_pose.copy()
-        left_target_pose[1] = (self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005)/2
-        right_target_pose[1] = -(self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005)/2
-        self.IK_gripper(observe,robot,left_ori_pose,left_target_pose,right_ori_pose,right_target_pose,100)
+        left_target_pose[1] = (self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005) / 2
+        right_target_pose[1] = -(self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005) / 2
+        self.IK_gripper(observe, robot, left_ori_pose, left_target_pose, right_ori_pose, right_target_pose, 100)
         self.height_control(observe, robot, 0)
         return observe
+
     def height_control(self, observe, robot, targrt_height, step_num=50):
         height = observe["jq"][2]
         for step in range(step_num):
             robot.target_control[2] = (targrt_height - height) * step / step_num + height
-            observe = self.robot_pause(robot,1)
+            observe = self.robot_pause(robot, 1)
             # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
         return observe
 
@@ -544,12 +525,14 @@ class DianRobot:
         robot.target_control[5:11] = [-0.0, -0.166, 0.032, 0.0, 1.5708, 2.223]
         robot.target_control[12:18] = [-0.0, -0.166, 0.032, 0.0, -1.5708, -2.223]
         robot.target_control[2] = 0.25
-        observe = self.robot_pause(robot,100)
+        observe = self.robot_pause(robot, 100)
         return observe
+
     def head_control(self, observe, robot, target_angle):
         robot.target_control[4] = target_angle
-        observe = self.robot_pause(robot,100)
+        observe = self.robot_pause(robot, 100)
         return observe
+
     def gripper_control(self, observe, robot, arm, direction, open_size=0.5):
         left_size_ori = observe["jq"][11]
         right_size_ori = observe["jq"][18]
@@ -579,7 +562,7 @@ class DianRobot:
         for step in range(step_num):
             robot.target_control[11] = left_size_ori + (left_size_target - left_size_ori) * step / step_num
             robot.target_control[18] = right_size_ori + (right_size_target - right_size_ori) * step / step_num
-            observe = self.robot_pause(robot,2)
+            observe = self.robot_pause(robot, 2)
             # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
         return observe
 
@@ -640,7 +623,7 @@ class DianRobot:
                 continue
             robot.data_renew = False
             bo = observe["base_orientation"]
-            corrected_obs = [bo[1], bo[2],bo[3], bo[0]]
+            corrected_obs = [bo[1], bo[2], bo[3], bo[0]]
             euler = Rotation.from_quat(corrected_obs).as_euler('xyz', degrees=True)
             if target_angle - euler[2] > 0:
                 if target_angle - euler[2] > 180:
@@ -703,7 +686,7 @@ class DianRobot:
         return self.R1dst
 
 
-def robot_do(command : Command):
+def robot_do(command: Command):
     frequency = 50.0
     name = command.description
     start = time.time()
@@ -716,7 +699,6 @@ def robot_do(command : Command):
     end = time.time()
     print("end command({}) at {}s, cost {}s".format(name, end, end - start))
 
-
 def main(args=None):
     rclpy.init(args=args)
     exec_robot = DianRobotNode()
@@ -725,26 +707,43 @@ def main(args=None):
     # pub_thread = threading.Thread(target=exec_robot.pub_thread)
     # pub_thread.start()
     policy = DianRobot()
-    #指令解析
+    # 指令解析
     while exec_robot.task_info is None:
         pass
     dst = policy.solve_rule(exec_robot.task_info)
     # region my commands
     node = exec_robot
-    turn_robot_command = TurnRobotCommand()
-    turn_robot_command.control_sender = RobotYawMotorSender(node)
-    turn_robot_command.motor_receiver = RobotYawMotorReceiver(node)
-    turn_robot_command.yaw_controller.set_current(-90.0)
-    turn_robot_command.yaw_controller._target_pos = 90.0
-    turn_robot_command.yaw_controller._tolerance = 0.1
-    # endregion my commands
-    robot_do(turn_robot_command)
+    cmd_turn = TurnRobotCommand()
+    cmd_turn.control_sender = RobotYawMotorSender(node)
+    cmd_turn.motor_receiver = RobotYawMotorReceiver(node)
 
+    cmd_forward = ForwardRobotCommand()
+    cmd_forward.control_sender = RobotForwardMotorSender(node)
+    cmd_forward.motor_receiver = RobotForwardMotorReceiver(node)
+    # endregion my commands
+    cmd_turn.yaw_controller \
+        .set_current(-90.0) \
+        .set_target(90.0) \
+        .set_tolerance(0.01)
+    robot_do(cmd_turn)
+
+    cmd_forward.forward_controller \
+        .set_current([0.0, 0.0]) \
+        .set_target([0.0, 0.4]) \
+        .set_tolerance(0.01) \
+        .set_origin([0.0, 0.0])
+    robot_do(cmd_forward)
+
+    # while True:
+    #     print("机器人已到达目标位置")
+    #     time.sleep(10)
+    #
+    # raise Exception("End of the test")
 
     # 前往观测位置
     obs = policy.gripper_control(exec_robot.obs, exec_robot, "both", "open")
-    obs = policy.base_forward(exec_robot.obs, 1, exec_robot, [0, 0.4, policy.R1dst[2]])
-    obs = policy.robot_pause(exec_robot)
+    # obs = policy.base_forward(exec_robot.obs, 1, exec_robot, [0, 0.4, policy.R1dst[2]])
+    # obs = policy.robot_pause(exec_robot)
     obs = policy.base_rotate(exec_robot.obs, 0, exec_robot)
     obs = policy.robot_pause(exec_robot)
     obs = policy.base_rotate(exec_robot.obs, 0, exec_robot)
