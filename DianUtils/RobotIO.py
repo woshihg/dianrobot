@@ -96,8 +96,6 @@ class RobotLRArmMotorSender:
         for i in range(6):
             n.tctr_left_arm[i] = float(motor_angles[i])
             n.tctr_right_arm[i] = float(motor_angles[i + 6])
-        print("tctr_left_arm: ", n.tctr_left_arm)
-        print("tctr_right_arm: ", n.tctr_right_arm)
         n.publish_messages()
 
 class RobotLRArmMotorReceiver:

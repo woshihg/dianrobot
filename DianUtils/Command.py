@@ -4,6 +4,8 @@ from DianUtils.ForwardController import *
 from DianUtils.YawController import *
 from DianUtils.SignalGenerator import *
 from DianUtils.ArmPositionController import *
+from DianUtils.ArmAngleController import *
+
 
 class TimeSpan:
     def __init__(self, begin: float = time.time(), duration_s: float = 0.7):
@@ -152,12 +154,9 @@ class MoveArmCommand(Command):
         self.arm_controller.set_current_pos(target_pos)
 
     def feedback(self):
-        #print("feedback command: ", self.description)
-
         # get position from receiver
         angles = self.motor_receiver.receive()
         self.arm_controller.set_motor_angles(angles)
-        #print("move robot command feedback current({})".format(position))
 
 
     def is_done(self) -> bool:
@@ -200,3 +199,56 @@ class MoveArmsCommand(Command):
         self.r_arm_controller.set_motor_angles(angles[6:])
         #print("move robot command feedback current({})".format(position))
 
+class RotArmCommand(Command):
+    def __init__(self):
+        super().__init__()
+        self.description = "rotate arm command"
+        self.arm_controller = ArmAngleController()
+        self.signal_generator = ConstSignalGenerator(5)
+        self.control_sender = ArmControlSender()
+        self.motor_receiver = ArmMotorReceiver()
+
+    def execute(self, current_time: float):
+        ratio = self.signal_generator.calc_signal(current_time)
+        self.arm_controller.set_ratio(ratio)
+
+        target_rot = self.arm_controller.calc_current_target()
+        self.control_sender.send(target_rot)
+
+    def feedback(self):
+        # get position from receiver
+        angles = self.motor_receiver.receive()
+        self.arm_controller.set_current(angles)
+
+    def is_done(self) -> bool:
+        done = self.arm_controller.check_is_done()
+        return done
+
+class RotArmsCommand(Command):
+    def __init__(self):
+        super().__init__()
+        self.description = "rotate both arms command"
+        self.l_arm_controller = ArmAngleController()
+        self.r_arm_controller = ArmAngleController()
+        self.signal_generator = ConstSignalGenerator(5)
+        self.control_sender = ArmControlSender()
+        self.motor_receiver = ArmMotorReceiver()
+
+    def execute(self, current_time: float):
+        ratio = self.signal_generator.calc_signal(current_time)
+        self.l_arm_controller.set_ratio(ratio)
+        self.r_arm_controller.set_ratio(ratio)
+
+        l_target_rot = self.l_arm_controller.calc_current_target()
+        r_target_rot = self.r_arm_controller.calc_current_target()
+        self.control_sender.send(np.concatenate((l_target_rot, r_target_rot)))
+
+    def feedback(self):
+        # get position from receiver
+        angles = self.motor_receiver.receive()
+        self.l_arm_controller.set_current(angles[:6])
+        self.r_arm_controller.set_current(angles[6:])
+
+    def is_done(self) -> bool:
+        done = self.l_arm_controller.check_is_done() and self.r_arm_controller.check_is_done()
+        return done

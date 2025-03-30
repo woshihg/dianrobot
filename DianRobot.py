@@ -3,9 +3,9 @@ from ultralytics import YOLO
 import re
 import cv2
 from scipy.spatial.transform import Rotation as R
+from DianUtils.RobotIO import *
 from DianUtils.Command import *
-from DianUtils.YawController import *
-
+from RosNode import DianRobotNode
 class DianRobot:
     def __init__(self):
         self.right_arm_target_pose = None
@@ -44,6 +44,33 @@ class DianRobot:
         self.model = YOLO(model_path)
         prize_model_path = "/home/workspace/prize_m.pt"
         self.grasp_model = YOLO(prize_model_path)
+
+    def init_cmd(self, node):
+        self.cmd_turn = TurnRobotCommand()
+        self.cmd_turn.control_sender = RobotYawMotorSender(node)
+        self.cmd_turn.motor_receiver = RobotYawMotorReceiver(node)
+
+        self.cmd_forward = ForwardRobotCommand()
+        self.cmd_forward.control_sender = RobotForwardMotorSender(node)
+        self.cmd_forward.motor_receiver = RobotForwardMotorReceiver(node)
+
+        self.cmd_pos_arm_l = MoveArmCommand()
+        self.cmd_pos_arm_l.control_sender = RobotLArmMotorSender(node)
+        self.cmd_pos_arm_l.motor_receiver = RobotLArmMotorReceiver(node)
+        self.cmd_pos_arm_l.arm_controller.set_is_right(False)
+
+        self.cmd_pos_arm_r = MoveArmCommand()
+        self.cmd_pos_arm_r.control_sender = RobotRArmMotorSender(node)
+        self.cmd_pos_arm_r.motor_receiver = RobotRArmMotorReceiver(node)
+        self.cmd_pos_arm_r.arm_controller.set_is_right(True)
+
+        self.cmd_pos_arm_lr = MoveArmsCommand()
+        self.cmd_pos_arm_lr.control_sender = RobotLRArmMotorSender(node)
+        self.cmd_pos_arm_lr.motor_receiver = RobotLRArmMotorReceiver(node)
+
+        self.cmd_rot_arm_lr = RotArmsCommand()
+        self.cmd_rot_arm_lr.control_sender = RobotLRArmMotorSender(node)
+        self.cmd_rot_arm_lr.motor_receiver = RobotLRArmMotorReceiver(node)
 
     def create_transform_matrix(self, pos, quat=None, euler=None):
         # 通过欧拉角或四元数来计算旋转矩阵
@@ -425,7 +452,15 @@ class DianRobot:
                                                                     observe["jq"][2], np.array(observe["jq"][12:18]),
                                                                     Rotation.from_euler('zyx',
                                                                                         right_arm_target_euler).as_matrix())
+        self.cmd_rot_arm_lr.l_arm_controller \
+            .set_target(left_arm_joint) \
+            .set_current(np.array(observe["jq"][5:11]))
 
+        self.cmd_rot_arm_lr.r_arm_controller \
+            .set_target(right_arm_joint) \
+            .set_current(np.array(observe["jq"][12:18]))
+
+        robot_do(self.cmd_rot_arm_lr)
         # 调整机械臂的预备位置
         height = 1.015 - self.R1dst[2]
         step_num = 100
@@ -436,8 +471,6 @@ class DianRobot:
                 continue
             robot.data_renew = False
             i += 1
-            robot.target_control[5:11] = np.array(left_arm_joint) * i / step_num
-            robot.target_control[12:18] = np.array(right_arm_joint) * i / step_num
             robot.target_control[2] = height * i / step_num
             observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
 
@@ -472,9 +505,6 @@ class DianRobot:
             # print("observe[jq]",observe["jq"])
             # print("left_arm_target_pose[2]", left_arm_target_pose[2])
             left_arm_target_euler = np.array([0, 0.93584134, 1.6])
-            print("left_arm_target_pose", left_arm_target_pose)
-            print("left_arm_target_euler", left_arm_target_euler)
-            print("observe[jq]", observe["jq"][2], observe["jq"][5:11])
             left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_target_pose, "pick", "l",
                                                                        observe["jq"][2], np.array(observe["jq"][5:11]),
                                                                        Rotation.from_euler('zyx',
@@ -713,7 +743,15 @@ class DianRobot:
 
         return self.R1dst
 
+def robot_do(command: Command):
+    frequency = 50.0
+    name = command.description
+    start = time.time()
+    print("start command({}) at {}s".format(name, start))
+    while not command.is_done():
+        command.execute(time.time())
+        command.feedback()
+        time.sleep(1.0 / frequency)
 
-
-
-
+    end = time.time()
+    print("end command({}) at {}s, cost {}s".format(name, end, end - start))

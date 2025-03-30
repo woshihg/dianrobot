@@ -1,24 +1,29 @@
 import numpy as np
-
-
 # 角度控制器，发送插值角度控制信号
 class ArmAngleController:
     def __init__(self):
         # ranged form -180.0 to 180.0
         self._target_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._current_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        self.tolerance = 0.001  # dot product tolerance
-        self.ratio = 0.1
+        self._tolerance = 5  # dot product tolerance
+        self._ratio = 5
 
     # @brief 计算当前目标角度
     # @return float 当前最佳的输出角度
     def calc_current_target(self) -> np.array:
         delta = self._target_angle - self._current_angle
-        square = np.dot(delta, delta)
 
-        if square < self.tolerance:
+        if np.dot(delta, delta) < self._tolerance:
             return self._target_angle
-        return self._current_angle + delta * self.ratio
+
+        # normalize the diff, to keep increment in fixed length
+        direction = delta / np.linalg.norm(delta)
+
+        return delta + direction * self._ratio
+
+    def check_is_done(self) -> bool:
+        diff_pos = self._target_angle - self._current_angle
+        return np.dot(diff_pos, diff_pos) < self._tolerance / 10
 
     # region Getters and Setters
 
@@ -29,25 +34,29 @@ class ArmAngleController:
         return self._current_angle
 
     def get_ratio(self):
-        return self.ratio
+        return self._ratio
 
     def get_tolerance(self):
-        return self.tolerance
+        return self._tolerance
 
-    def set_target(self, target):
+    def set_target(self, target: np.array):
+        if type(target) != np.ndarray:
+            target = np.array(target)
         self._target_angle = target
         return self
 
-    def set_current(self, current):
+    def set_current(self, current: np.array):
+        if type(current) != np.ndarray:
+            current = np.array(current)
         self._current_angle = current
         return self
 
     def set_ratio(self, ratio):
-        self.ratio = ratio
+        self._ratio = ratio
         return self
 
     def set_tolerance(self, tolerance):
-        self.tolerance = tolerance
+        self._tolerance = tolerance
         return self
 
     # endregion Getters and Setters
