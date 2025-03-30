@@ -1,49 +1,122 @@
 import numpy as np
+from DianUtils.JointData import *
+from DianUtils.Transform3 import Transform3
+from discoverse.mmk2 import MMK2FIK
 
 
-# 角度控制器，发送插值角度控制信号
+# 角度控制器，给定目标的transform，发送电机角度控制信号
 class ArmPositionController:
     def __init__(self):
         # ranged form -180.0 to 180.0
-        self.target_pos = np.array([0.0, 0.0, 0.0])
-        self.current_pos = np.array([0.0, 0.0, 0.0])
-        self.tolerance = 0.1  # dot product tolerance
-        self.ratio = 0.5
+        self._target = Transform3()
+        self._current = Transform3()
+        self._current_joint_data = JointData()
+        self._tolerance = 0.001 # dot product tolerance
+        self._ratio = 0.001
 
-    # @brief 计算当前目标角度
-    # @return float 当前最佳的输出角度
-    def calc_current_target(self) -> np.array:
-        delta = self.target_pos - self.current_pos
-        square = np.dot(delta, delta)
+    def calc_current_target_pos(self) -> np.array:
+        cur_pos = self._current.get_pos()
+        tar_pos = self._target.get_pos()
+        diff_pos = tar_pos - cur_pos
 
-        if square < self.tolerance:
-            return self.current_pos
-        return self.current_pos + delta * self.ratio
+        if np.dot(diff_pos, diff_pos) < self._tolerance:
+            return tar_pos
 
+        # normalize the diff, to keep increment in fixed length
+        direction = diff_pos / np.linalg.norm(diff_pos)
+
+        return cur_pos + direction * self._ratio
+
+
+    def calc_motor_angles_by_target_pos(self, target_pos: np.array) -> np.array:
+        tar_rot = self._target.get_rot()
+        new_trans = Transform3(target_pos, tar_rot)
+        return self._current_joint_data.calc_target_motor_angles(new_trans)
+
+    def check_is_done(self) -> bool:
+        cur_pos = self._current.get_pos()
+        tar_pos = self._target.get_pos()
+        diff_pos = tar_pos - cur_pos
+        return np.dot(diff_pos, diff_pos) < self._tolerance / 10
     # region Getters and Setters
 
-    def get_target(self):
-        return self.target_pos
+    def get_target_pos(self) -> np.array:
+        return self._target.get_pos()
 
-    def get_current(self):
-        return self.current_pos
+    def get_current_pos(self) -> np.array:
+        return self._current.get_pos()
 
-    def get_ratio(self):
-        return self.ratio
+    def get_target_rot(self) -> np.array:
+        return self._target.get_rot()
 
-    def get_tolerance(self):
-        return self.tolerance
+    def get_current_rot(self) -> np.array:
+        return self._current.get_rot()
 
-    def set_target(self, target):
-        self.target_pos = target
+    def get_ratio(self) -> float:
+        return self._ratio
 
-    def set_current(self, current):
-        self.current_pos = current
+    def get_tolerance(self) -> float:
+        return self._tolerance
 
-    def set_ratio(self, ratio):
-        self.ratio = ratio
+    def set_target_pos(self, target_pos: np.array):
+        self._target.set_pos(target_pos)
+        return self
 
-    def set_tolerance(self, tolerance):
-        self.tolerance = tolerance
+    def set_current_pos(self, current_pos: np.array):
+        self._current.set_pos(current_pos)
+        return self
+
+    def set_target_rot(self, target_rot: np.array):
+        self._target.set_rot(target_rot)
+        return self
+
+    def set_current_rot(self, current_rot: np.array):
+        self._current.set_rot(current_rot)
+        return self
+
+    def set_ratio(self, ratio: float):
+        self._ratio = ratio
+        return self
+
+    def set_tolerance(self, tolerance: float):
+        self._tolerance = tolerance
+        return self
+
+    # joint data, is right
+    def set_is_right(self, is_right: bool):
+        self._current_joint_data.set_is_right(is_right)
+        return self
+
+    def set_robot_height(self, height: float):
+        self._current_joint_data.set_robot_height(height)
+        return self
+
+    def set_motor_angles(self, angles: np.array):
+        self._current_joint_data.set_motor_angles(angles)
+        return self
+
+    def get_is_right(self) -> bool:
+        return self._current_joint_data.get_is_right()
+
+    def get_robot_height(self) -> float:
+        return self._current_joint_data.get_robot_height()
+
+    def get_motor_angles(self) -> np.array:
+        return self._current_joint_data.get_motor_angles()
 
     # endregion Getters and Setters
+
+class ArmControlSender:
+    def __init__(self):
+        pass
+
+    def send(self, motor_angles: np.array) -> None:
+        pass
+
+
+class ArmMotorReceiver:
+    def __init__(self):
+        pass
+
+    def receive(self) -> np.array:
+        pass

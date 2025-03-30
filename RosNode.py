@@ -107,10 +107,10 @@ class DianRobotNode(Node):
 
     # @note this control value is like the acceleration but not exactly, take with caution
     def set_robot_chassis_omega_magic_value(self, value):
-        self.tctr_base[1] = value + 0.0
+        self.tctr_base[1] = float(value)
 
     def set_robot_chassis_speed_magic_value(self, value):
-        self.tctr_base[0] = value + 0.0
+        self.tctr_base[0] = float(value)
 
     def step(self, target_control):
         # 1. 通过发布消息控制机器人

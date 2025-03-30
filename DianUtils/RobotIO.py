@@ -50,3 +50,61 @@ class RobotForwardMotorReceiver:
         return self._last_not_none
 
      # endregion RobotForwardMotor
+
+# region RobotArmMotor
+class RobotLArmMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_angles: np.array):
+        n = self.node
+        for i in range(6):
+            n.tctr_left_arm[i] = float(motor_angles[i])
+        n.publish_messages()
+
+class RobotLArmMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> np.array:
+        return self.node.obs["jq"][5:11]
+
+class RobotRArmMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_angles: np.array):
+        n = self.node
+        for i in range(6):
+            n.tctr_left_arm[i] = float(motor_angles[i])
+        n.publish_messages()
+
+class RobotRArmMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> np.array:
+        return self.node.obs["jq"][12:18]
+
+class RobotLRArmMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_angles: np.array):
+        n = self.node
+        # first 6 is left arm, second 6 is right arm
+        for i in range(6):
+            n.tctr_left_arm[i] = float(motor_angles[i])
+            n.tctr_right_arm[i] = float(motor_angles[i + 6])
+        print("tctr_left_arm: ", n.tctr_left_arm)
+        print("tctr_right_arm: ", n.tctr_right_arm)
+        n.publish_messages()
+
+class RobotLRArmMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> np.array:
+        return np.concatenate((self.node.obs["jq"][5:11], self.node.obs["jq"][12:18]))
+
+# endregion RobotArmMotor

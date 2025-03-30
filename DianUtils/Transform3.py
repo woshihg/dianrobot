@@ -1,29 +1,36 @@
 import numpy as np
+from hgext.fsmonitor import poststatus
 
 
 # 3D transform class
 class Transform3:
     def __init__(self, pos=np.array([0.0, 0.0, 0.0]), rot=np.array([0.0, 0.0, 0.0])):
-        self.pos = pos  # position
-        self.rot = rot  # rotation in euler angles
+        self._pos = pos  # position
+        self._rot = rot  # rotation in euler angles
 
     def __str__(self):
-        return f"pos: {self.pos}, rot: {self.rot}"
+        return f"pos: {self._pos}, rot: {self._rot}"
 
     def copy(self):
-        return Transform3(self.pos.copy(), self.rot.copy())
+        return Transform3(self._pos.copy(), self._rot.copy())
 
     # region Getters and Setters
-    def get_pos(self):
-        return self.pos
+    def get_pos(self) -> np.array:
+        return self._pos
 
-    def get_rot(self):
-        return self.rot
+    def get_rot(self) -> np.array:
+        return self._rot
 
-    def set_pos(self, pos):
-        self.pos = pos
+    def set_pos(self, pos : np.array):
+        # 类型检查
+        if type(pos) != np.ndarray:
+            pos = np.array(pos)
+        self._pos = pos.copy()
 
-    def set_rot(self, rot):
-        self.rot = rot
+    def set_rot(self, rot : np.array):
+        # 类型检查
+        if type(rot) != np.ndarray:
+            rot = np.array(rot)
+        self._rot = rot.copy()
     # endregion Getters and Setters
 

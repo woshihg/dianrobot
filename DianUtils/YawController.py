@@ -1,3 +1,7 @@
+import numpy as np
+from scipy.spatial.transform import Rotation
+
+
 def _cut_angle(angle: float) -> float:
     while angle > 180.0:
         angle -= 360.0
@@ -5,6 +9,10 @@ def _cut_angle(angle: float) -> float:
         angle += 360.0
     return angle
 
+def _from_orientation_to_angle_yaw(orientation) -> float:
+    corrected_obs = [orientation[1], orientation[2], orientation[3], orientation[0]]
+    euler = Rotation.from_quat(corrected_obs).as_euler('xyz', degrees=True)
+    return euler[2]
 
 # 角度控制器，发送插值角度控制信号
 class YawController:
@@ -52,10 +60,14 @@ class YawController:
         return self._tolerance
 
     def set_target(self, target):
+        if type(target) == list or type(target) == np.array:
+            target = _from_orientation_to_angle_yaw(target)
         self._target_yaw = _cut_angle(target)
         return self
 
     def set_current(self, current):
+        if type(current) == list or type(current) == np.array:
+            current = _from_orientation_to_angle_yaw(current)
         self._current_yaw = _cut_angle(current)
         return self
 

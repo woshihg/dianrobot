@@ -29,4 +29,18 @@ class SignalGenerator:
     def set_time_begin(self, time_begin):
         self.time_begin_s = time_begin
 
+class ConstSignalGenerator:
+    def __init__(self, const: float = 1.0):
+        self.const = const
+
+    # leave the empty argument for compatibility to SignalGenerator
+    def calc_signal(self, current_time: float) -> float:
+        return self.const
+
+    def get_const(self):
+        return self.const
+
+    def set_const(self, const):
+        self.const = const
+
 # endregion Getters and Setters
