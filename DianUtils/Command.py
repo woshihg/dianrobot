@@ -5,6 +5,7 @@ from DianUtils.YawController import *
 from DianUtils.SignalGenerator import *
 from DianUtils.ArmPositionController import *
 from DianUtils.ArmAngleController import *
+from DianUtils.HeightController import *
 
 
 class TimeSpan:
@@ -230,7 +231,7 @@ class RotArmsCommand(Command):
         self.description = "rotate both arms command"
         self.l_arm_controller = ArmAngleController()
         self.r_arm_controller = ArmAngleController()
-        self.signal_generator = ConstSignalGenerator(5)
+        self.signal_generator = ConstSignalGenerator(0.1)
         self.control_sender = ArmControlSender()
         self.motor_receiver = ArmMotorReceiver()
 
@@ -242,13 +243,41 @@ class RotArmsCommand(Command):
         l_target_rot = self.l_arm_controller.calc_current_target()
         r_target_rot = self.r_arm_controller.calc_current_target()
         self.control_sender.send(np.concatenate((l_target_rot, r_target_rot)))
+        self.l_arm_controller.set_current(l_target_rot)
+        self.r_arm_controller.set_current(r_target_rot)
 
     def feedback(self):
         # get position from receiver
         angles = self.motor_receiver.receive()
-        self.l_arm_controller.set_current(angles[:6])
-        self.r_arm_controller.set_current(angles[6:])
+        # self.l_arm_controller.set_current(angles[:6])
+        # self.r_arm_controller.set_current(angles[6:])
 
     def is_done(self) -> bool:
         done = self.l_arm_controller.check_is_done() and self.r_arm_controller.check_is_done()
+        return done
+
+class RobotHeightCommand(Command):
+    def __init__(self):
+        super().__init__()
+        self.description = "robot height command"
+        self.height_controller = HeightController()
+        self.signal_generator = ConstSignalGenerator(0.03)
+        self.control_sender = HeightControlSender()
+        self.motor_receiver = HeightMotorReceiver()
+
+    def execute(self, current_time: float):
+        ratio = self.signal_generator.calc_signal(current_time)
+        self.height_controller.set_ratio(ratio)
+
+        target_height = self.height_controller.calc_current_target()
+        self.control_sender.send(target_height)
+        self.height_controller.set_current(target_height)
+
+    def feedback(self):
+        # get position from receiver
+        height = self.motor_receiver.receive()
+        # self.height_controller.set_current(target_height)
+
+    def is_done(self) -> bool:
+        done = self.height_controller.check_is_done()
         return done

@@ -4,18 +4,58 @@ import numpy as np
 import time
 import threading
 import rclpy
-def robot_do(command: Command):
-    frequency = 50.0
-    name = command.description
-    start = time.time()
-    print("start command({}) at {}s".format(name, start))
-    while not command.is_done():
-        command.execute(time.time())
-        command.feedback()
-        time.sleep(1.0 / frequency)
+def get_rotation_angle(start, end):
+    # 根据二维起止位置计算旋转角度
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    angle = np.arctan2(dy, dx) * 180 / np.pi
+    return angle
 
-    end = time.time()
-    print("end command({}) at {}s, cost {}s".format(name, end, end - start))
+def move_to_anywhere(policy: DianRobot, exec_robot: DianRobotNode, dst_pos, dst_angle):
+    # 计算运行角度
+    angle = get_rotation_angle(exec_robot.obs["base_position"][:2], dst_pos)
+
+    policy.cmd_turn.yaw_controller \
+        .set_current(exec_robot.obs["base_orientation"]) \
+        .set_target(angle) \
+        .set_tolerance(0.01)
+    robot_do(policy.cmd_turn)
+
+    policy.cmd_forward.forward_controller \
+        .set_current(exec_robot.obs["base_position"][:2]) \
+        .set_target(dst_pos) \
+        .set_tolerance(0.01) \
+        .set_origin(exec_robot.obs["base_position"][:2])
+    robot_do(policy.cmd_forward)
+
+    policy.cmd_turn.yaw_controller \
+        .set_current(exec_robot.obs["base_orientation"]) \
+        .set_target(dst_angle) \
+        .set_tolerance(0.01)
+    robot_do(policy.cmd_turn)
+def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
+    # 运行到柜子前边
+    if policy.R1info_cabinet_dir == "right":
+        move_to_anywhere(policy, exec_robot, [policy.R1dst[0], policy.R1dst[1]], 0)
+    else:
+        move_to_anywhere(policy, exec_robot, [policy.R1dst[0], policy.R1dst[1]], 90)
+
+    l, r = policy.phase_test_lr(exec_robot.obs)
+    policy.cmd_pos_arm_lr.l_arm_controller \
+        .set_robot_height(exec_robot.obs["jq"][2]) \
+        .set_motor_angles(np.array(exec_robot.obs["jq"][5:11])) \
+        .set_target_rot(np.array([0, 0.93584134, 1.6])) \
+        .set_current_pos(policy.lft_arm_ori_pose) \
+        .set_target_pos(l)
+
+    policy.cmd_pos_arm_lr.r_arm_controller \
+        .set_robot_height(exec_robot.obs["jq"][2]) \
+        .set_motor_angles(np.array(exec_robot.obs["jq"][12:18])) \
+        .set_target_rot(np.array([0, 0.93584134, -1.6])) \
+        .set_current_pos(policy.rgt_arm_ori_pose) \
+        .set_target_pos(r)
+    robot_do(policy.cmd_pos_arm_lr)
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -60,45 +100,10 @@ def main(args=None):
     obs = policy.get_box_pos(exec_robot.obs, exec_robot, is_first_call=True)
     if policy.R1info_cabinet_dir == "right":
         # 观测目标位置并根据箱子左右初始化夹爪位置
-        obs = policy.set_origin_pos(exec_robot.obs, exec_robot)
-        policy.cmd_turn.yaw_controller \
-            .set_current(exec_robot.obs["base_orientation"]) \
-            .set_target(0.0) \
-            .set_tolerance(0.01)
-        robot_do(policy.cmd_turn)
-
-        policy.cmd_forward.forward_controller \
-            .set_current(exec_robot.obs["base_position"][:2]) \
-            .set_target(policy.R1dst) \
-            .set_tolerance(0.01) \
-            .set_origin(obs["base_position"][:2])
-        robot_do(policy.cmd_forward)
-
-        policy.cmd_turn.yaw_controller \
-            .set_current(exec_robot.obs["base_orientation"]) \
-            .set_target(0.0) \
-            .set_tolerance(0.005)
-        robot_do(policy.cmd_turn)
-
-        l,r = policy.phase_test_lr(exec_robot.obs)
-        policy.cmd_pos_arm_lr.l_arm_controller \
-            .set_robot_height(exec_robot.obs["jq"][2]) \
-            .set_motor_angles(np.array(exec_robot.obs["jq"][5:11])) \
-            .set_target_rot(np.array([0, 0.93584134, 1.6])) \
-            .set_current_pos(policy.lft_arm_ori_pose) \
-            .set_target_pos(l)
-
-        policy.cmd_pos_arm_lr.r_arm_controller \
-            .set_robot_height(exec_robot.obs["jq"][2]) \
-            .set_motor_angles(np.array(exec_robot.obs["jq"][12:18])) \
-            .set_target_rot(np.array([0, 0.93584134, -1.6])) \
-            .set_current_pos(policy.rgt_arm_ori_pose) \
-            .set_target_pos(r)
-        robot_do(policy.cmd_pos_arm_lr)
-
-        # obs = policy.catch_box(obs, exec_robot)
+        obs = policy.set_origin_pos(exec_robot)
+        catch_box(policy, exec_robot)
         print("status done: catch box")
-        obs = policy.base_forward(obs, 0, exec_robot, [policy.R1dst[0] - 0.3, policy.R1dst[1], policy.R1dst[2]])
+        obs = policy.base_forward(exec_robot.obs, 0, exec_robot, [policy.R1dst[0] - 0.3, policy.R1dst[1], policy.R1dst[2]])
         print("准备置位")
         obs = policy.middle_reset(obs, exec_robot)
         print("status done: middle reset")
@@ -118,41 +123,12 @@ def main(args=None):
         obs = policy.robot_pause(exec_robot)
 
     else:
-        obs = policy.base_forward(obs, 0, exec_robot)
-        obs = policy.robot_pause(exec_robot)
-        obs = policy.base_rotate(obs, 90, exec_robot)
-        obs = policy.robot_pause(exec_robot)
-        obs = policy.base_forward(obs, 1, exec_robot, [policy.R1dst[0], 0, policy.R1dst[2]])
-        obs = policy.robot_pause(exec_robot)
+        move_to_anywhere(policy, exec_robot, [policy.R1dst[0], 0], 90)
         # 通过图片解析箱子位置
         obs = policy.get_box_pos(obs, exec_robot, is_first_call=False)
         # 观测目标位置并根据箱子左右初始化夹爪位置
-        # obs = policy.get_box_pos(obs, exec_robot)
-        obs = policy.set_origin_pos(obs, exec_robot)
-        obs = policy.robot_pause(exec_robot)
-        obs = policy.base_rotate(obs, 90, exec_robot)
-        obs = policy.robot_pause(exec_robot)
-        obs = policy.base_forward(obs, 1, exec_robot)
-        obs = policy.robot_pause(exec_robot)
-        obs = policy.base_rotate(obs, 90, exec_robot)
-        obs = policy.robot_pause(exec_robot)
-        l,r = policy.phase_test_lr(exec_robot.obs)
-        policy.cmd_pos_arm_lr.l_arm_controller \
-            .set_robot_height(exec_robot.obs["jq"][2]) \
-            .set_motor_angles(np.array(exec_robot.obs["jq"][5:11])) \
-            .set_target_rot(np.array([0, 0.93584134, 1.6])) \
-            .set_current_pos(policy.lft_arm_ori_pose) \
-            .set_target_pos(l)
-
-        policy.cmd_pos_arm_lr.r_arm_controller \
-            .set_robot_height(exec_robot.obs["jq"][2]) \
-            .set_motor_angles(np.array(exec_robot.obs["jq"][12:18])) \
-            .set_target_rot(np.array([0, 0.93584134, -1.6])) \
-            .set_current_pos(policy.rgt_arm_ori_pose) \
-            .set_target_pos(r)
-        robot_do(policy.cmd_pos_arm_lr)
-
-        # obs = policy.catch_box(obs, exec_robot)
+        obs = policy.set_origin_pos(exec_robot)
+        catch_box(policy, exec_robot)
         obs = policy.base_forward(obs, 1, exec_robot, [policy.R1dst[0], policy.R1dst[1] - 0.4, policy.R1dst[2]])
         obs = policy.middle_reset(obs, exec_robot)
         print("准备回位置")

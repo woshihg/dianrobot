@@ -72,6 +72,10 @@ class DianRobot:
         self.cmd_rot_arm_lr.control_sender = RobotLRArmMotorSender(node)
         self.cmd_rot_arm_lr.motor_receiver = RobotLRArmMotorReceiver(node)
 
+        self.cmd_height = RobotHeightCommand()
+        self.cmd_height.control_sender = RobotHeightMotorSender(node)
+        self.cmd_height.motor_receiver = RobotHeightMotorReceiver(node)
+
     def create_transform_matrix(self, pos, quat=None, euler=None):
         # 通过欧拉角或四元数来计算旋转矩阵
         rot_matrix = np.eye(3)
@@ -429,7 +433,7 @@ class DianRobot:
         return r
 
 
-    def set_origin_pos(self, observe, robot):
+    def set_origin_pos(self, robot):
         # self.R1dst_dirc = "left"
         if self.R1dst_dirc == "left":
             self.lft_arm_ori_pose = np.array([0.520, 0.238, 1.2])
@@ -444,40 +448,36 @@ class DianRobot:
 
         left_arm_target_euler = np.array([0, 0.93584134, 1.6])
         left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(self.lft_arm_ori_pose, "pick", "l",
-                                                                   observe["jq"][2], np.array(observe["jq"][5:11]),
+                                                                   robot.obs["jq"][2], np.array(robot.obs["jq"][5:11]),
                                                                    Rotation.from_euler('zyx',
                                                                                        left_arm_target_euler).as_matrix())
         right_arm_target_euler = np.array([0, 0.93584134, -1.6])
         right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(self.rgt_arm_ori_pose, "pick", "r",
-                                                                    observe["jq"][2], np.array(observe["jq"][12:18]),
+                                                                    robot.obs["jq"][2], np.array(robot.obs["jq"][12:18]),
                                                                     Rotation.from_euler('zyx',
                                                                                         right_arm_target_euler).as_matrix())
         self.cmd_rot_arm_lr.l_arm_controller \
             .set_target(left_arm_joint) \
-            .set_current(np.array(observe["jq"][5:11]))
+            .set_current(np.array(robot.obs["jq"][5:11]))
 
         self.cmd_rot_arm_lr.r_arm_controller \
             .set_target(right_arm_joint) \
-            .set_current(np.array(observe["jq"][12:18]))
+            .set_current(np.array(robot.obs["jq"][12:18]))
 
         robot_do(self.cmd_rot_arm_lr)
+
         # 调整机械臂的预备位置
         height = 1.015 - self.R1dst[2]
-        step_num = 100
-        i = 0
-        while i < step_num:
-            if robot.data_renew is False:
-                time.sleep(0.002)
-                continue
-            robot.data_renew = False
-            i += 1
-            robot.target_control[2] = height * i / step_num
-            observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
+        self.cmd_height.height_controller \
+            .set_target(height) \
+            .set_current(robot.obs["jq"][2])
+
+        robot_do(self.cmd_height)
 
         # 对齐机械臂的高度
-        self.lft_arm_ori_pose[2] -= observe["jq"][2]
-        self.rgt_arm_ori_pose[2] -= observe["jq"][2]
-        return observe
+        self.lft_arm_ori_pose[2] -= robot.obs["jq"][2]
+        self.rgt_arm_ori_pose[2] -= robot.obs["jq"][2]
+        return robot.obs
 
     def catch_box(self, observe, robot):
         # TODO：根据小物体的位置，调整机械臂的位置，抓取小物体
@@ -744,7 +744,7 @@ class DianRobot:
         return self.R1dst
 
 def robot_do(command: Command):
-    frequency = 50.0
+    frequency = 24.0
     name = command.description
     start = time.time()
     print("start command({}) at {}s".format(name, start))

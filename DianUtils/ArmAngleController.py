@@ -2,28 +2,31 @@ import numpy as np
 # 角度控制器，发送插值角度控制信号
 class ArmAngleController:
     def __init__(self):
-        # ranged form -180.0 to 180.0
+        # ranged form -pi to pi
         self._target_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._current_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        self._tolerance = 5  # dot product tolerance
-        self._ratio = 5
+        self._tolerance = 0.01  # dot product tolerance
+        self._ratio = 0.1
 
     # @brief 计算当前目标角度
     # @return float 当前最佳的输出角度
     def calc_current_target(self) -> np.array:
+        print("_target_angle: ", self._target_angle)
+        print("_current_angle: ", self._current_angle)
         delta = self._target_angle - self._current_angle
 
-        if np.dot(delta, delta) < self._tolerance:
+        if np.dot(delta, delta) < 2 * self._ratio:
+            print("target_angle_done: ", self._target_angle)
             return self._target_angle
 
         # normalize the diff, to keep increment in fixed length
         direction = delta / np.linalg.norm(delta)
-
+        print("new_angle: ", self._current_angle + direction * self._ratio)
         return delta + direction * self._ratio
 
     def check_is_done(self) -> bool:
         diff_pos = self._target_angle - self._current_angle
-        return np.dot(diff_pos, diff_pos) < self._tolerance / 10
+        return np.dot(diff_pos, diff_pos) < self._tolerance
 
     # region Getters and Setters
 

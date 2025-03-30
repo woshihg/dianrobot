@@ -106,3 +106,20 @@ class RobotLRArmMotorReceiver:
         return np.concatenate((self.node.obs["jq"][5:11], self.node.obs["jq"][12:18]))
 
 # endregion RobotArmMotor
+
+# region RobotHeightMotor
+class RobotHeightMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_value: float):
+        n = self.node
+        n.tctr_slide[0] = motor_value
+        n.publish_messages()
+
+class RobotHeightMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> float:
+        return self.node.obs["jq"][2]

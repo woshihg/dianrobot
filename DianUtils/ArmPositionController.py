@@ -11,15 +11,15 @@ class ArmPositionController:
         self._target = Transform3()
         self._current = Transform3()
         self._current_joint_data = JointData()
-        self._tolerance = 0.001 # dot product tolerance
-        self._ratio = 0.001
+        self._tolerance = 0.0001 # dot product tolerance
+        self._ratio = 0.0001
 
     def calc_current_target_pos(self) -> np.array:
         cur_pos = self._current.get_pos()
         tar_pos = self._target.get_pos()
         diff_pos = tar_pos - cur_pos
 
-        if np.dot(diff_pos, diff_pos) < self._tolerance:
+        if np.dot(diff_pos, diff_pos) < 2 * self._tolerance:
             return tar_pos
 
         # normalize the diff, to keep increment in fixed length
@@ -37,7 +37,9 @@ class ArmPositionController:
         cur_pos = self._current.get_pos()
         tar_pos = self._target.get_pos()
         diff_pos = tar_pos - cur_pos
-        return np.dot(diff_pos, diff_pos) < self._tolerance / 10
+        print("cur_pos: ", cur_pos)
+        print("tar_pos: ", tar_pos)
+        return np.dot(diff_pos, diff_pos) < self._tolerance
     # region Getters and Setters
 
     def get_target_pos(self) -> np.array:

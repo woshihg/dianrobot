@@ -3,45 +3,67 @@
 class HeightController:
     def __init__(self):
         # ranged form -180.0 to 180.0
-        self.target_height = 0.0
-        self.current_height = 0.0
-        self.tolerance = 0.1
-        self.ratio = 1.0
+        self._target_height = 0.0
+        self._current_height = 0.0
+        self._tolerance = 0.001
+        self._ratio = 0.03
 
     # @brief 计算当前目标角度
     # @return float 当前最佳的输出角度
     def calc_current_target(self) -> float:
-        delta = self.target_height - self.current_height
-        abs_delta = abs(delta)
+        delta = self._target_height - self._current_height
+        if abs(delta) < 2 * self._ratio:
+            return self._target_height
 
-        if abs_delta < self.tolerance:
-            return self.current_height
-        return self.current_height + delta * self.ratio
+        # normalize the diff, to keep increment in fixed length
+        direction = delta / abs(delta)
+        return self._current_height + direction * self._ratio
+
+    def check_is_done(self) -> bool:
+        delta = self._target_height - self._current_height
+        return abs(delta) < self._tolerance
 
     # region Getters and Setters
 
     def get_target(self):
-        return self.target_height
+        return self._target_height
 
     def get_current(self):
-        return self.current_height
+        return self._current_height
 
     def get_ratio(self):
-        return self.ratio
+        return self._ratio
 
     def get_tolerance(self):
-        return self.tolerance
+        return self._tolerance
 
     def set_target(self, target):
-        self.target_height = target
+        self._target_height = target
+        return self
 
     def set_current(self, current):
-        self.current_height = current
+        self._current_height = current
+        return self
 
     def set_ratio(self, ratio):
-        self.ratio = ratio
+        self._ratio = ratio
 
     def set_tolerance(self, tolerance):
-        self.tolerance = tolerance
+        self._tolerance = tolerance
 
     # endregion Getters and Setters
+
+class HeightControlSender:
+    def __init__(self):
+        pass
+
+    def send(self, height: float) -> None:
+        pass
+
+class HeightMotorReceiver:
+    def __init__(self):
+        pass
+
+    def receive(self) -> float:
+        pass
+
