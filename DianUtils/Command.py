@@ -6,6 +6,7 @@ from DianUtils.SignalGenerator import *
 from DianUtils.ArmPositionController import *
 from DianUtils.ArmAngleController import *
 from DianUtils.HeightController import *
+from DianUtils.GripperController import *
 
 
 class TimeSpan:
@@ -280,4 +281,60 @@ class RobotHeightCommand(Command):
 
     def is_done(self) -> bool:
         done = self.height_controller.check_is_done()
+        return done
+
+class RobotGripperCommand(Command):
+    def __init__(self):
+        super().__init__()
+        self.description = "robot gripper command"
+        self.gripper_controller = GripperController()
+        self.signal_generator = ConstSignalGenerator(0.0001)
+        self.control_sender = GripperControlSender()
+        self.motor_receiver = GripperMotorReceiver()
+
+    def execute(self, current_time: float):
+        ratio = self.signal_generator.calc_signal(current_time)
+        self.gripper_controller.set_ratio(ratio)
+
+        target_open_size = self.gripper_controller.calc_current_target()
+        self.control_sender.send(target_open_size)
+        self.gripper_controller.set_current(target_open_size)
+
+    def feedback(self):
+        # get position from receiver
+        open_size = self.motor_receiver.receive()
+        # self.gripper_controller.set_current(open_size)
+
+    def is_done(self) -> bool:
+        done = self.gripper_controller.check_is_done()
+        return done
+
+class RobotGrippersCommand(Command):
+    def __init__(self):
+        super().__init__()
+        self.description = "robot grippers command"
+        self.l_gripper_controller = GripperController()
+        self.r_gripper_controller = GripperController()
+        self.signal_generator = ConstSignalGenerator(0.0001)
+        self.control_sender = GripperControlSender()
+        self.motor_receiver = GripperMotorReceiver()
+
+    def execute(self, current_time: float):
+        ratio = self.signal_generator.calc_signal(current_time)
+        self.l_gripper_controller.set_ratio(ratio)
+        self.r_gripper_controller.set_ratio(ratio)
+
+        l_target_open_size = self.l_gripper_controller.calc_current_target()
+        r_target_open_size = self.r_gripper_controller.calc_current_target()
+        self.control_sender.send(np.concatenate((l_target_open_size, r_target_open_size)))
+        self.l_gripper_controller.set_current(l_target_open_size)
+        self.r_gripper_controller.set_current(r_target_open_size)
+
+    def feedback(self):
+        # get position from receiver
+        open_size = self.motor_receiver.receive()
+        # self.gripper_controller.set_current(open_size)
+
+    def is_done(self) -> bool:
+        done = self.l_gripper_controller.check_is_done() and self.r_gripper_controller.check_is_done()
         return done

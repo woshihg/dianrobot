@@ -400,7 +400,7 @@ class DianRobot:
 
         pass
 
-    def phase_test_lr(self, observe):
+    def get_catch_pos_lr(self, observe):
         # x ,y ,z的增量
         if self.R1info_cabinet_dir == "right":
             base_pos = [0.605, 0.40]
@@ -419,18 +419,6 @@ class DianRobot:
         right_arm_target_pose = self.rgt_arm_ori_pose + forward
 
         return left_arm_target_pose, right_arm_target_pose
-
-
-    def phase_test_r(self):
-        r = Transform3()
-        if self.R1info_cabinet_dir == "right":
-            r.set_pos([0.520, 0.070, 1.2])
-        elif self.R1info_cabinet_dir == "right":
-            r.set_pos([0.520, -0.233, 1.2])
-        else:
-            r.set_pos([0.520, -0.222, 1.2])
-        r.set_rot([0, 0.93584134, -1.6])
-        return r
 
 
     def set_origin_pos(self, robot):
@@ -480,7 +468,6 @@ class DianRobot:
         return robot.obs
 
     def catch_box(self, observe, robot):
-        # TODO：根据小物体的位置，调整机械臂的位置，抓取小物体
         step_num = 10
         left_arm_target_pose = np.array([0, 0, 0])
         right_arm_target_pose = np.array([0, 0, 0])
@@ -525,51 +512,34 @@ class DianRobot:
         observe = self.gripper_control(observe, robot, "both", "close")
         return observe
 
-    def IK_gripper(self, observe, robot, left_ori_pos, left_target_pos, right_ori_pos, right_target_pos, step_num=1000):
-        # 根据左右机械臂选择关节索引及欧拉角
-        # arm_config = {'l': {'index':(5, 11), 'euler': np.array([0, 0.93584134, 1.6])},
-        #                 'r': {'index':(12, 18), 'euler': np.array([0, 0.93584134, -1.6])}
-        #               }
-        # start_idx, end_idx = arm_config[arm]['index']
-        # target_euler = arm_config[arm]['euler']
-        left_target_euler = np.array([0, 0.93584134, 1.6])
-        right_target_euler = np.array([0, 0.93584134, -1.6])
-        left_arm_pos = left_ori_pos.copy()
-        right_arm_pos = right_ori_pos.copy()
-
-        for step in range(step_num):
-            left_arm_pos[0] = left_ori_pos[0] + (left_target_pos[0] - left_ori_pos[0]) * step / step_num
-            left_arm_pos[1] = left_ori_pos[1] + (left_target_pos[1] - left_ori_pos[1]) * step / step_num
-            left_arm_pos[2] = left_ori_pos[2] + (left_target_pos[2] - left_ori_pos[2]) * step / step_num
-            right_arm_pos[0] = right_ori_pos[0] + (right_target_pos[0] - right_ori_pos[0]) * step / step_num
-            right_arm_pos[1] = right_ori_pos[1] + (right_target_pos[1] - right_ori_pos[1]) * step / step_num
-            right_arm_pos[2] = right_ori_pos[2] + (right_target_pos[2] - right_ori_pos[2]) * step / step_num
-            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_pos, "pick", 'l',
-                                                                       observe["jq"][2],
-                                                                       np.array(observe["jq"][5:11]),
-                                                                       Rotation.from_euler('zyx',
-                                                                                           left_target_euler).as_matrix())
-            right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_pos, "pick", 'r',
-                                                                        observe["jq"][2],
-                                                                        np.array(observe["jq"][12:18]),
-                                                                        Rotation.from_euler('zyx',
-                                                                                            right_target_euler).as_matrix())
-            robot.target_control[5:11] = left_arm_joint
-            robot.target_control[12:18] = right_arm_joint
-            observe = self.robot_pause(robot, 1)
-        return observe
-
     # 移动夹爪至中间位置
-    def middle_reset(self, observe, robot):
-        left_ori_pose = self.left_arm_target_pose
-        right_ori_pose = self.right_arm_target_pose
+    def middle_reset(self, robot):
+        left_ori_pose = self.left_arm_target_pose.copy()
+        right_ori_pose = self.right_arm_target_pose.copy()
         left_target_pose = self.left_arm_target_pose.copy()
         right_target_pose = self.right_arm_target_pose.copy()
         left_target_pose[1] = (self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005) / 2
         right_target_pose[1] = -(self.left_arm_target_pose[1] - self.right_arm_target_pose[1] + 0.0005) / 2
-        self.IK_gripper(observe, robot, left_ori_pose, left_target_pose, right_ori_pose, right_target_pose, 100)
-        self.height_control(observe, robot, 0)
-        return observe
+        self.cmd_pos_arm_lr.l_arm_controller \
+            .set_robot_height(robot.obs["jq"][2]) \
+            .set_motor_angles(np.array(robot.obs["jq"][5:11])) \
+            .set_target_rot(np.array([0, 0.93584134, 1.6])) \
+            .set_current_pos(left_ori_pose) \
+            .set_target_pos(left_target_pose)
+
+        self.cmd_pos_arm_lr.r_arm_controller \
+            .set_robot_height(robot.obs["jq"][2]) \
+            .set_motor_angles(np.array(robot.obs["jq"][12:18])) \
+            .set_target_rot(np.array([0, 0.93584134, -1.6])) \
+            .set_current_pos(right_ori_pose) \
+            .set_target_pos(right_target_pose)
+        robot_do(self.cmd_pos_arm_lr)
+
+        self.cmd_height.height_controller \
+            .set_target(0) \
+            .set_current(robot.obs["jq"][2])
+        robot_do(self.cmd_height)
+        return
 
     def height_control(self, observe, robot, targrt_height, step_num=50):
         height = observe["jq"][2]
@@ -755,3 +725,16 @@ def robot_do(command: Command):
 
     end = time.time()
     print("end command({}) at {}s, cost {}s".format(name, end, end - start))
+
+def robot_do_muti_cmd(commands: list):
+    frequency = 24.0
+    start = time.time()
+    print("start command at {}s".format(start))
+    while not all([command.is_done() for command in commands]):
+        for command in commands:
+            command.execute(time.time())
+            command.feedback()
+        time.sleep(1.0 / frequency)
+
+    end = time.time()
+    print("end command at {}s, cost {}s".format(end, end - start))

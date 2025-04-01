@@ -1,3 +1,5 @@
+from gpg.gpgme import gpgme_conf_arg
+
 from DianRobot import *
 from RosNode import DianRobotNode
 import numpy as np
@@ -40,7 +42,7 @@ def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
     else:
         move_to_anywhere(policy, exec_robot, [policy.R1dst[0], policy.R1dst[1]], 90)
 
-    l, r = policy.phase_test_lr(exec_robot.obs)
+    l, r = policy.get_catch_pos_lr(exec_robot.obs)
     policy.cmd_pos_arm_lr.l_arm_controller \
         .set_robot_height(exec_robot.obs["jq"][2]) \
         .set_motor_angles(np.array(exec_robot.obs["jq"][5:11])) \
@@ -56,6 +58,36 @@ def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
         .set_target_pos(r)
     robot_do(policy.cmd_pos_arm_lr)
 
+def go_back(policy: DianRobot, exec_robot: DianRobotNode):
+    # 后退避免撞墙
+    if policy.R1info_cabinet_dir == "right":
+        target = [policy.R1dst[0] - 0.3, policy.R1dst[1], policy.R1dst[2]]
+    else:
+        target = [policy.R1dst[0], policy.R1dst[1] - 0.3, policy.R1dst[2]]
+    policy.cmd_forward.forward_controller \
+        .set_current(exec_robot.obs["base_position"][:2]) \
+        .set_target(target) \
+        .set_tolerance(0.01) \
+        .set_origin(exec_robot.obs["base_position"][:2])
+    robot_do(policy.cmd_forward)
+    # 把盒子放在中间位置
+    print("准备置位")
+    policy.middle_reset(exec_robot)
+    # 回到放置位置
+    print("准备回位置")
+    move_to_anywhere(policy, exec_robot, [-0.09, 0], -140)
+    print("准备放置")
+    policy.cmd_height.height_controller \
+        .set_current(exec_robot.obs["jq"][2]) \
+        .set_target(0.26)
+    robot_do(policy.cmd_height)
+    print("松开夹爪")
+    obs = policy.gripper_control(obs, exec_robot, "both", "open", open_size=0.4)
+    print("抬起机械臂")
+    policy.cmd_height.height_controller \
+        .set_current(exec_robot.obs["jq"][2]) \
+        .set_target(0)
+    robot_do(policy.cmd_height)
 
 def main(args=None):
     rclpy.init(args=args)
@@ -103,25 +135,7 @@ def main(args=None):
         obs = policy.set_origin_pos(exec_robot)
         catch_box(policy, exec_robot)
         print("status done: catch box")
-        obs = policy.base_forward(exec_robot.obs, 0, exec_robot, [policy.R1dst[0] - 0.3, policy.R1dst[1], policy.R1dst[2]])
-        print("准备置位")
-        obs = policy.middle_reset(obs, exec_robot)
-        print("status done: middle reset")
-        print("准备回位置")
-        obs = policy.base_rotate(obs, -90, exec_robot)
-        obs = policy.base_rotate(obs, -140, exec_robot)
-        obs = policy.base_forward(obs, 2, exec_robot, [-0.10, 0, policy.R1dst[2]])
-        obs = policy.robot_pause(exec_robot)
-        print("准备放置")
-        obs = policy.height_control(obs, exec_robot, 0.26)
-        obs = policy.robot_pause(exec_robot)
-        print("松开夹爪")
-        obs = policy.gripper_control(obs, exec_robot, "both", "open", open_size=0.4)
-        obs = policy.robot_pause(exec_robot)
-        print("抬起机械臂")
-        obs = policy.height_control(obs, exec_robot, 0)
-        obs = policy.robot_pause(exec_robot)
-
+        go_back(policy, exec_robot)
     else:
         move_to_anywhere(policy, exec_robot, [policy.R1dst[0], 0], 90)
         # 通过图片解析箱子位置
@@ -129,21 +143,9 @@ def main(args=None):
         # 观测目标位置并根据箱子左右初始化夹爪位置
         obs = policy.set_origin_pos(exec_robot)
         catch_box(policy, exec_robot)
-        obs = policy.base_forward(obs, 1, exec_robot, [policy.R1dst[0], policy.R1dst[1] - 0.4, policy.R1dst[2]])
-        obs = policy.middle_reset(obs, exec_robot)
-        print("准备回位置")
-        obs = policy.base_rotate(obs, 10, exec_robot)
-        obs = policy.base_rotate(obs, -35, exec_robot)
-        obs = policy.base_forward(obs, 2, exec_robot, [-0.09, 0, policy.R1dst[2]])
-        obs = policy.robot_pause(exec_robot)
-        print("准备放置")
-        obs = policy.height_control(obs, exec_robot, 0.26)
-        obs = policy.robot_pause(exec_robot)
-        print("松开夹爪")
-        obs = policy.gripper_control(obs, exec_robot, "both", "open", open_size=0.4)
-        print("抬起机械臂")
-        obs = policy.height_control(obs, exec_robot, 0)
-        obs = policy.robot_pause(exec_robot)
+        print("status done: catch box")
+        go_back(policy, exec_robot)
+
     print("机械臂回到初始位置")
     obs = policy.reset_arm(obs, exec_robot)
     print("观察视角")
