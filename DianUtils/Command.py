@@ -148,7 +148,7 @@ class MoveArmCommand(Command):
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.arm_controller.set_ratio(ratio)
+        self.arm_controller.set_ratio(self.arm_controller.get_ratio())
 
         target_pos = self.arm_controller.calc_current_target_pos()
         motor_values = self.arm_controller.calc_motor_angles_by_target_pos(target_pos)
@@ -180,8 +180,8 @@ class MoveArmsCommand(Command):
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.l_arm_controller.set_ratio(ratio)
-        self.r_arm_controller.set_ratio(ratio)
+        self.l_arm_controller.set_ratio(self.l_arm_controller.get_ratio())
+        self.r_arm_controller.set_ratio(self.l_arm_controller.get_ratio())
 
         l_target_pos = self.l_arm_controller.calc_current_target_pos()
         r_target_pos = self.r_arm_controller.calc_current_target_pos()
@@ -202,18 +202,22 @@ class MoveArmsCommand(Command):
         self.r_arm_controller.set_motor_angles(angles[6:])
         #print("move robot command feedback current({})".format(position))
 
+    def is_done(self) -> bool:
+        done = self.l_arm_controller.check_is_done() and self.r_arm_controller.check_is_done()
+        return done
+
 class RotArmCommand(Command):
     def __init__(self):
         super().__init__()
         self.description = "rotate arm command"
         self.arm_controller = ArmAngleController()
-        self.signal_generator = ConstSignalGenerator(5)
+        self.signal_generator = ConstSignalGenerator(0.01)
         self.control_sender = ArmControlSender()
         self.motor_receiver = ArmMotorReceiver()
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.arm_controller.set_ratio(ratio)
+        self.arm_controller.set_ratio(self.arm_controller.get_ratio())
 
         target_rot = self.arm_controller.calc_current_target()
         self.control_sender.send(target_rot)
@@ -233,14 +237,14 @@ class RotArmsCommand(Command):
         self.description = "rotate both arms command"
         self.l_arm_controller = ArmAngleController()
         self.r_arm_controller = ArmAngleController()
-        self.signal_generator = ConstSignalGenerator(0.1)
+        self.signal_generator = ConstSignalGenerator(0.01)
         self.control_sender = ArmControlSender()
         self.motor_receiver = ArmMotorReceiver()
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.l_arm_controller.set_ratio(ratio)
-        self.r_arm_controller.set_ratio(ratio)
+        self.l_arm_controller.set_ratio(self.l_arm_controller.get_ratio())
+        self.r_arm_controller.set_ratio(self.l_arm_controller.get_ratio())
 
         l_target_rot = self.l_arm_controller.calc_current_target()
         r_target_rot = self.r_arm_controller.calc_current_target()
@@ -269,7 +273,7 @@ class RobotHeightCommand(Command):
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.height_controller.set_ratio(ratio)
+        self.height_controller.set_ratio(self.height_controller.get_ratio())
 
         target_height = self.height_controller.calc_current_target()
         self.control_sender.send(target_height)
@@ -295,7 +299,7 @@ class RobotGripperCommand(Command):
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.gripper_controller.set_ratio(ratio)
+        self.gripper_controller.set_ratio(self.gripper_controller.get_ratio())
 
         target_open_size = self.gripper_controller.calc_current_target()
         self.control_sender.send(target_open_size)
@@ -322,8 +326,8 @@ class RobotGrippersCommand(Command):
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.l_gripper_controller.set_ratio(ratio)
-        self.r_gripper_controller.set_ratio(ratio)
+        self.l_gripper_controller.set_ratio(self.l_gripper_controller.get_ratio())
+        self.r_gripper_controller.set_ratio(self.r_gripper_controller.get_ratio())
 
         l_target_open_size = self.l_gripper_controller.calc_current_target()
         r_target_open_size = self.r_gripper_controller.calc_current_target()
@@ -351,7 +355,7 @@ class RobotHeadPitchCommand(Command):
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)
-        self.head_pitch_controller.set_ratio(ratio)
+        self.head_pitch_controller.set_ratio(self.head_pitch_controller.get_ratio())
 
         target_pitch = self.head_pitch_controller.calc_current_target()
         self.control_sender.send(target_pitch)

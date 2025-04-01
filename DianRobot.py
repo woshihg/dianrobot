@@ -76,6 +76,14 @@ class DianRobot:
         self.cmd_height.control_sender = RobotHeightMotorSender(node)
         self.cmd_height.motor_receiver = RobotHeightMotorReceiver(node)
 
+        self.cmd_grippers = RobotGrippersCommand()
+        self.cmd_grippers.control_sender = RobotLRGripperMotorSender(node)
+        self.cmd_grippers.motor_receiver = RobotLRGripperMotorReceiver(node)
+
+        self.cmd_head_pitch = RobotHeadPitchCommand()
+        self.cmd_head_pitch.control_sender = RobotHeadPitchMotorSender(node)
+        self.cmd_head_pitch.motor_receiver = RobotHeadPitchMotorReceiver(node)
+
     def create_transform_matrix(self, pos, quat=None, euler=None):
         # 通过欧拉角或四元数来计算旋转矩阵
         rot_matrix = np.eye(3)
@@ -281,18 +289,7 @@ class DianRobot:
         observe = self.gripper_control(observe, robot, "both", "open")
         return observe
 
-    def get_box_pos(self, observe, robot, is_first_call=True):
-        # TODO：根据图像获得小物体的位置
-        """机械臂移动的部分"""
-        # 获取底盘当前位置与朝向
-        base_pos = observe["base_position"]
-        base_quat = Rotation.from_quat(observe["base_orientation"]).as_euler('zyx')[0]
-
-        # 设置一个观测高度
-        robot.target_control[2] = 0.5
-        robot.target_control[4] = -0.2
-        self.robot_pause(robot, 100)
-
+    def get_box_pos(self, head_img, is_first_call=True):
         """获取图片并进行处理的部分"""
         conf_threshold = 0.25  # 置信度阈值 (0-1之间)
         iou_threshold = 0.45  # IoU阈值 (非极大值抑制用)
@@ -300,7 +297,7 @@ class DianRobot:
         hide_conf = False  # 是否隐藏置信度
         line_width = 2
 
-        img = observe["img"][0]  # 保存在img里面
+        img = head_img.copy()
         # 对图像进行预处理
         processed_img = self._preprocess_image(img)
 
@@ -322,11 +319,7 @@ class DianRobot:
         # 获取目标位置信息
         self.R1dst[0] = self.cabinet_position.get(self.R1info_cabinet_dir)[0]
         self.R1dst[1] = self.cabinet_position.get(self.R1info_cabinet_dir)[1]
-        # 恢复机器人原始位置
-        robot.target_control[2] = 0.
-        robot.target_control[4] = 0.
-        self.robot_pause(robot, 100)
-        return observe
+        return
 
     def _handle_first_detection(self, results):
         """处理首次检测逻辑"""
@@ -369,6 +362,8 @@ class DianRobot:
                 layer_idx = min(4, max(0, int(relative_y // layer_height)))
                 self.R1info_floor_idx = ["第1层", "second", "third", "fourth", "第5层"][layer_idx]
                 self.R1dst[2] = self.floor_height.get(self.R1info_floor_idx)
+                print(f"Detected object at {self.R1info_floor_idx}")
+
                 # 判断左右位置
                 self.R1dst_dirc = "right" if center_x > (w // 2) else "left"
 
@@ -465,7 +460,7 @@ class DianRobot:
         # 对齐机械臂的高度
         self.lft_arm_ori_pose[2] -= robot.obs["jq"][2]
         self.rgt_arm_ori_pose[2] -= robot.obs["jq"][2]
-        return robot.obs
+        return
 
     def catch_box(self, observe, robot):
         step_num = 10
@@ -711,29 +706,29 @@ class DianRobot:
                               describe)
             self.R1info_prop_name = "sheet"
 
-        return self.R1dst
+        return
 
 def robot_do(command: Command):
-    frequency = 24.0
+    frequency = 10.0
     name = command.description
     start = time.time()
     print("start command({}) at {}s".format(name, start))
     while not command.is_done():
-        command.execute(time.time())
         command.feedback()
+        command.execute(time.time())
         time.sleep(1.0 / frequency)
 
     end = time.time()
     print("end command({}) at {}s, cost {}s".format(name, end, end - start))
 
 def robot_do_muti_cmd(commands: list):
-    frequency = 24.0
+    frequency = 10.0
     start = time.time()
     print("start command at {}s".format(start))
     while not all([command.is_done() for command in commands]):
         for command in commands:
-            command.execute(time.time())
             command.feedback()
+            command.execute(time.time())
         time.sleep(1.0 / frequency)
 
     end = time.time()

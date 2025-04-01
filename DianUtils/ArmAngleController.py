@@ -11,17 +11,13 @@ class ArmAngleController:
     # @brief 计算当前目标角度
     # @return float 当前最佳的输出角度
     def calc_current_target(self) -> np.array:
-        print("_target_angle: ", self._target_angle)
-        print("_current_angle: ", self._current_angle)
         delta = self._target_angle - self._current_angle
 
         if np.dot(delta, delta) < 2 * self._ratio:
-            print("target_angle_done: ", self._target_angle)
             return self._target_angle
 
         # normalize the diff, to keep increment in fixed length
         direction = delta / np.linalg.norm(delta)
-        print("new_angle: ", self._current_angle + direction * self._ratio)
         return delta + direction * self._ratio
 
     def check_is_done(self) -> bool:

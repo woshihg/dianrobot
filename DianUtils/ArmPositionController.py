@@ -11,8 +11,8 @@ class ArmPositionController:
         self._target = Transform3()
         self._current = Transform3()
         self._current_joint_data = JointData()
-        self._tolerance = 0.0001 # dot product tolerance
-        self._ratio = 0.0001
+        self._tolerance = 0.001 # dot product tolerance
+        self._ratio = 0.001
 
     def calc_current_target_pos(self) -> np.array:
         cur_pos = self._current.get_pos()

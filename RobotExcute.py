@@ -48,6 +48,7 @@ def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
         .set_motor_angles(np.array(exec_robot.obs["jq"][5:11])) \
         .set_target_rot(np.array([0, 0.93584134, 1.6])) \
         .set_current_pos(policy.lft_arm_ori_pose) \
+        .set_ratio(0.001) \
         .set_target_pos(l)
 
     policy.cmd_pos_arm_lr.r_arm_controller \
@@ -55,25 +56,23 @@ def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
         .set_motor_angles(np.array(exec_robot.obs["jq"][12:18])) \
         .set_target_rot(np.array([0, 0.93584134, -1.6])) \
         .set_current_pos(policy.rgt_arm_ori_pose) \
+        .set_ratio(0.001) \
         .set_target_pos(r)
     robot_do(policy.cmd_pos_arm_lr)
 
 def go_back(policy: DianRobot, exec_robot: DianRobotNode):
-    # 后退避免撞墙
     if policy.R1info_cabinet_dir == "right":
-        target = [policy.R1dst[0] - 0.3, policy.R1dst[1], policy.R1dst[2]]
+        target = [policy.R1dst[0] - 0.3, policy.R1dst[1]]
     else:
-        target = [policy.R1dst[0], policy.R1dst[1] - 0.3, policy.R1dst[2]]
+        target = [policy.R1dst[0], policy.R1dst[1] - 0.3]
     policy.cmd_forward.forward_controller \
         .set_current(exec_robot.obs["base_position"][:2]) \
         .set_target(target) \
         .set_tolerance(0.01) \
         .set_origin(exec_robot.obs["base_position"][:2])
     robot_do(policy.cmd_forward)
-    # 把盒子放在中间位置
     print("准备置位")
     policy.middle_reset(exec_robot)
-    # 回到放置位置
     print("准备回位置")
     move_to_anywhere(policy, exec_robot, [-0.09, 0], -140)
     print("准备放置")
@@ -82,12 +81,48 @@ def go_back(policy: DianRobot, exec_robot: DianRobotNode):
         .set_target(0.26)
     robot_do(policy.cmd_height)
     print("松开夹爪")
-    obs = policy.gripper_control(obs, exec_robot, "both", "open", open_size=0.4)
+    policy.cmd_grippers.l_gripper_controller \
+        .set_current(exec_robot.obs["jq"][11]) \
+        .set_target(0.4)
+    policy.cmd_grippers.r_gripper_controller \
+        .set_current(exec_robot.obs["jq"][18]) \
+        .set_target(0.4)
+    robot_do(policy.cmd_grippers)
     print("抬起机械臂")
     policy.cmd_height.height_controller \
         .set_current(exec_robot.obs["jq"][2]) \
         .set_target(0)
     robot_do(policy.cmd_height)
+
+def move_and_get_box_pos(policy: DianRobot, exec_robot: DianRobotNode, is_first_call: bool):
+    # 设置一个观测高度和角度
+    policy.cmd_height.height_controller \
+        .set_current(exec_robot.obs["jq"][2]) \
+        .set_target(0.5) \
+        .set_ratio(0.03)
+    policy.cmd_head_pitch.head_pitch_controller \
+        .set_current(exec_robot.obs["jq"][4]) \
+        .set_target(-0.2) \
+        .set_ratio(0.03)
+    robot_do_muti_cmd([policy.cmd_height, policy.cmd_head_pitch])
+    # 等待机器人到位
+    time.sleep(1)
+    # 获取观测结果
+    cv2.imwrite("test2.jpg", exec_robot.obs["img"][0])
+    policy.get_box_pos(exec_robot.obs["img"][0], is_first_call=is_first_call)
+
+    # 恢复机器人原始位置
+    policy.cmd_height.height_controller \
+        .set_current(exec_robot.obs["jq"][2]) \
+        .set_target(0.0) \
+        .set_ratio(0.03)
+    policy.cmd_head_pitch.head_pitch_controller \
+        .set_current(exec_robot.obs["jq"][4]) \
+        .set_target(0.0) \
+        .set_ratio(0.03)
+    robot_do_muti_cmd([policy.cmd_height, policy.cmd_head_pitch])
+    # 等待机器人到位
+    time.sleep(1)
 
 def main(args=None):
     rclpy.init(args=args)
@@ -101,12 +136,7 @@ def main(args=None):
     # 指令解析
     while exec_robot.task_info is None:
         pass
-    dst = policy.solve_rule(exec_robot.task_info)
-    # region my commands
-    node = exec_robot
-
-
-    # endregion my commands
+    policy.solve_rule(exec_robot.task_info)
     policy.cmd_turn.yaw_controller \
         .set_current(-90.0) \
         .set_target(90.0) \
@@ -129,22 +159,17 @@ def main(args=None):
     robot_do(policy.cmd_turn)
 
     # 通过图片解析箱子位置
-    obs = policy.get_box_pos(exec_robot.obs, exec_robot, is_first_call=True)
-    if policy.R1info_cabinet_dir == "right":
-        # 观测目标位置并根据箱子左右初始化夹爪位置
-        obs = policy.set_origin_pos(exec_robot)
-        catch_box(policy, exec_robot)
-        print("status done: catch box")
-        go_back(policy, exec_robot)
-    else:
+    move_and_get_box_pos(policy, exec_robot, is_first_call=True)
+    if policy.R1info_cabinet_dir == "left":
         move_to_anywhere(policy, exec_robot, [policy.R1dst[0], 0], 90)
         # 通过图片解析箱子位置
-        obs = policy.get_box_pos(obs, exec_robot, is_first_call=False)
-        # 观测目标位置并根据箱子左右初始化夹爪位置
-        obs = policy.set_origin_pos(exec_robot)
-        catch_box(policy, exec_robot)
-        print("status done: catch box")
-        go_back(policy, exec_robot)
+        move_and_get_box_pos(policy, exec_robot, is_first_call=False)
+
+    # 观测目标位置并根据箱子左右初始化夹爪位置
+    policy.set_origin_pos(exec_robot)
+    catch_box(policy, exec_robot)
+    print("status done: catch box")
+    go_back(policy, exec_robot)
 
     print("机械臂回到初始位置")
     obs = policy.reset_arm(obs, exec_robot)

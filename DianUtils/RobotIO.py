@@ -174,7 +174,7 @@ class RobotLRGripperMotorReceiver:
         self.node = node
 
     def receive(self) -> float:
-        return self.node.obs["jq"][11]
+        return np.concatenate((self.node.obs["jq"][11], self.node.obs["jq"][18]))
 
 # endregion RobotGripperMotor
 
@@ -185,7 +185,7 @@ class RobotHeadPitchMotorSender:
 
     def send(self, motor_value: float):
         n = self.node
-        n.tctr_head[0] = motor_value
+        n.tctr_head[1] = motor_value
         n.publish_messages()
 
 class RobotHeadPitchMotorReceiver:
@@ -193,4 +193,4 @@ class RobotHeadPitchMotorReceiver:
         self.node = node
 
     def receive(self) -> float:
-        return self.node.obs["jq"][3]
+        return self.node.obs["jq"][4]
