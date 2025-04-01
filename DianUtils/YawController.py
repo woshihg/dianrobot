@@ -7,7 +7,7 @@ def _cut_angle(angle: float) -> float:
         angle -= 360.0
     while angle < -180.0:
         angle += 360.0
-    return angle
+    return float(angle)
 
 def _from_orientation_to_angle_yaw(orientation) -> float:
     corrected_obs = [orientation[1], orientation[2], orientation[3], orientation[0]]

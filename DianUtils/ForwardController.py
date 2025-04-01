@@ -6,7 +6,7 @@ class ForwardController:
         # ranged form -180.0 to 180.0
         self._target_pos = np.array([0.0, 0.0])
         self._current_pos = np.array([0.0, 0.0])
-        self._direction_vec = np.array([0.0, 0.0])
+        self._direction_vec = np.array([1.0, 0.0])
         self._tolerance = 0.01
         self._ratio = 0.5
 

@@ -37,7 +37,7 @@ class GripperController:
         return self._tolerance
 
     def set_target(self, target):
-        self._target_open_size = target
+        self._target_open_size = float(target)
         return self
 
     def set_current(self, current):
@@ -46,9 +46,11 @@ class GripperController:
 
     def set_ratio(self, ratio):
         self._ratio = ratio
+        return self
 
     def set_tolerance(self, tolerance):
         self._tolerance = tolerance
+        return self
 
     # endregion Getters and Setters
 

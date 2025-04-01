@@ -47,9 +47,11 @@ class HeightController:
 
     def set_ratio(self, ratio):
         self._ratio = ratio
+        return self
 
     def set_tolerance(self, tolerance):
         self._tolerance = tolerance
+        return self
 
     # endregion Getters and Setters
 

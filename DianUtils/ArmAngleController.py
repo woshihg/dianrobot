@@ -5,20 +5,19 @@ class ArmAngleController:
         # ranged form -pi to pi
         self._target_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._current_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        self._tolerance = 0.01  # dot product tolerance
+        self._tolerance = 0.1  # dot product tolerance
         self._ratio = 0.1
 
     # @brief 计算当前目标角度
     # @return float 当前最佳的输出角度
     def calc_current_target(self) -> np.array:
         delta = self._target_angle - self._current_angle
-
         if np.dot(delta, delta) < 2 * (self._ratio ** 2):
             return self._target_angle
 
         # normalize the diff, to keep increment in fixed length
         direction = delta / np.linalg.norm(delta)
-        return delta + direction * self._ratio
+        return self._current_angle + direction * self._ratio
 
     def check_is_done(self) -> bool:
         diff_pos = self._target_angle - self._current_angle

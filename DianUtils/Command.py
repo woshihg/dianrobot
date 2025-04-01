@@ -46,7 +46,7 @@ class TurnRobotCommand(Command):
         super().__init__()
         self.description = "turn robot command"
         self.yaw_controller = YawController()
-        self.signal_generator = SignalGenerator()
+        self.signal_generator = SignalGenerator(10)
         self.control_sender = YawControlSender()
         self.motor_receiver = YawMotorReceiver()
         self.supervisor = TimeSpan()
@@ -85,6 +85,11 @@ class TurnRobotCommand(Command):
         self.control_sender.send(0)
         return self.supervisor.update(time.time())
 
+    def parm(self, yaw: float, target_yaw:float, tolerance: float = 0.1, interval_s: float = 10.0, stable_s: float = 0.7):
+        self.yaw_controller.set_current(yaw).set_target(target_yaw).set_tolerance(tolerance)
+        self.signal_generator.set_interval(interval_s)
+        self.supervisor.duration = stable_s
+
 class ForwardRobotCommand(Command):
     def __init__(self):
         super().__init__()
@@ -94,7 +99,7 @@ class ForwardRobotCommand(Command):
 
         self.forward_controller = ForwardController()
         self.signal_generator = SignalGenerator()
-        self.signal_generator.set_interval(8)
+        self.signal_generator.set_interval(10)
 
         self.supervisor = TimeSpan()
         self.supervisor.duration = 2.0
@@ -144,7 +149,6 @@ class MoveArmCommand(Command):
         self.signal_generator = ConstSignalGenerator(0.01)
         self.control_sender = ArmControlSender()
         self.motor_receiver = ArmMotorReceiver()
-
 
     def execute(self, current_time: float):
         ratio = self.signal_generator.calc_signal(current_time)

@@ -76,7 +76,7 @@ class RobotRArmMotorSender:
     def send(self, motor_angles: np.array):
         n = self.node
         for i in range(6):
-            n.tctr_left_arm[i] = float(motor_angles[i])
+            n.tctr_right_arm[i] = float(motor_angles[i])
         n.publish_messages()
 
 class RobotRArmMotorReceiver:

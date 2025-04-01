@@ -14,7 +14,7 @@ def _pick_motor_angles(target : Transform3, is_right : bool, my_height: float, c
             return np.array(angles)
         print("Failed to calculate motor angles, retrying...")
         rot = rot + np.random.uniform(-0.01, 0.01, size=3)
-    raise Exception("Failed to calculate motor angles, after 10 retries")
+    raise ValueError("Failed to calculate motor angles after 10 retries")
 
 class JointData:
     def __init__(self, is_right: bool = False, robot_height: float = 0.0, motor_angles: np.array = np.zeros(6)):
