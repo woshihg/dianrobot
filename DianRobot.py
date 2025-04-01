@@ -251,7 +251,7 @@ class DianRobot:
         prop_height = -0.1
         if self.R1info_prop_name == "carton":
             prop_bias = [0.04, 0, 0.1]
-            prop_height = -0.1
+            prop_height = -0.15
             self.cmd_grippers.l_gripper_controller \
                 .set_target(1.0) \
                 .set_current(observe["jq"][11])
@@ -269,7 +269,7 @@ class DianRobot:
                 .set_current(observe["jq"][18])
         elif self.R1info_prop_name == "sheet":
             prop_bias = [0.03, 0, 0.1]
-            prop_height = -0.2
+            prop_height = -0.1
             self.cmd_grippers.l_gripper_controller \
                 .set_target(0.4) \
                 .set_current(observe["jq"][11])
@@ -286,7 +286,7 @@ class DianRobot:
                                                                                            left_arm_target_euler).as_matrix())
             if left_arm_joint is None:
                 right_arm_ori_pose = pos + prop_bias
-                right_arm_target_euler = [0., 0.5, np.pi]
+                right_arm_target_euler = [0., 0.3, np.pi]
                 right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_ori_pose, "pick", "r",
                                                                             observe["jq"][2],
                                                                             np.array(observe["jq"][12:18]),
@@ -320,7 +320,7 @@ class DianRobot:
                 time.sleep(2)
                 self.cmd_height.height_controller \
                     .set_current(observe["jq"][2]) \
-                    .set_target(0) \
+                    .set_target(-0.1) \
                     .set_ratio(0.005) \
                     .set_tolerance(0.005)
                 robot_do(self.cmd_height)
@@ -353,7 +353,7 @@ class DianRobot:
             time.sleep(2)
             self.cmd_height.height_controller \
                 .set_current(observe["jq"][2]) \
-                .set_target(0) \
+                .set_target(-0.1) \
                 .set_ratio(0.005) \
                 .set_tolerance(0.005)
             robot_do(self.cmd_height)
@@ -367,7 +367,7 @@ class DianRobot:
                                                                                             right_arm_target_euler).as_matrix())
             if right_arm_joint is None:
                 left_arm_ori_pose = pos + prop_bias
-                left_arm_target_euler = [0., 0.5, -np.pi]
+                left_arm_target_euler = [0., 0.3, -np.pi]
                 left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_ori_pose, "pick", "l",
                                                                            observe["jq"][2],
                                                                            np.array(observe["jq"][5:11]),
@@ -398,7 +398,7 @@ class DianRobot:
                 time.sleep(2)
                 self.cmd_height.height_controller \
                     .set_current(observe["jq"][2]) \
-                    .set_target(0) \
+                    .set_target(-0.1) \
                     .set_ratio(0.005) \
                     .set_tolerance(0.005)
                 robot_do(self.cmd_height)
@@ -437,13 +437,13 @@ class DianRobot:
             time.sleep(2)
         return
     def put_prop(self, robot):
-        self.cmd_forward.forward_controller \
-            .set_current(robot.obs["base_position"][:2]) \
-            .set_target([-0.15, -0.15]) \
-            .set_ratio(0.01) \
-            .set_tolerance(0.01) \
-            .set_direction_vec(calc_robot_direction(robot.obs["base_orientation"]))
-        robot_do(self.cmd_forward)
+        # self.cmd_forward.forward_controller \
+        #     .set_current(robot.obs["base_position"][:2]) \
+        #     .set_target([-0.15, -0.15]) \
+        #     .set_ratio(0.01) \
+        #     .set_tolerance(0.01) \
+        #     .set_direction_vec(calc_robot_direction(robot.obs["base_orientation"]))
+        # robot_do(self.cmd_forward)
         if self.R1info_table_dir == "left":
             self.cmd_turn.yaw_controller \
                 .set_current(robot.obs["base_orientation"]) \
@@ -737,18 +737,22 @@ class DianRobot:
 
     # endregion robot control
 
-def robot_do(command: Command):
+def robot_do(command: Command, time_s = 60.0):
     frequency = 24.0
     name = command.description
     start = time.time()
+    timeout = start + time_s
     print("start command({}) at {}s".format(name, start))
-    while not command.is_done():
+    while not time.time() > timeout and not command.is_done():
         command.feedback()
         command.execute(time.time())
         time.sleep(1.0 / frequency)
 
     end = time.time()
-    print("end command({}) at {}s, cost {}s".format(name, end, end - start))
+    if command.is_done():
+        print("end command({}) at {}s, cost {}s".format(name, end, end - start))
+    else:
+        print("timeout command({}) at {}s, cost {}s".format(name, end, end - start))
 
 def robot_do_multi_cmd(commands: list):
     frequency = 24.0
