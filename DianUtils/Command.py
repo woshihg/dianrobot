@@ -7,6 +7,7 @@ from DianUtils.ArmPositionController import *
 from DianUtils.ArmAngleController import *
 from DianUtils.HeightController import *
 from DianUtils.GripperController import *
+from DianUtils.HeadPitchController import *
 
 
 class TimeSpan:
@@ -337,4 +338,30 @@ class RobotGrippersCommand(Command):
 
     def is_done(self) -> bool:
         done = self.l_gripper_controller.check_is_done() and self.r_gripper_controller.check_is_done()
+        return done
+
+class RobotHeadPitchCommand(Command):
+    def __init__(self):
+        super().__init__()
+        self.description = "robot head pitch command"
+        self.head_pitch_controller = HeadPitchController()
+        self.signal_generator = ConstSignalGenerator(0.1)
+        self.control_sender = HeadPitchControlSender()
+        self.motor_receiver = HeadPitchMotorReceiver()
+
+    def execute(self, current_time: float):
+        ratio = self.signal_generator.calc_signal(current_time)
+        self.head_pitch_controller.set_ratio(ratio)
+
+        target_pitch = self.head_pitch_controller.calc_current_target()
+        self.control_sender.send(target_pitch)
+        self.head_pitch_controller.set_current(target_pitch)
+
+    def feedback(self):
+        # get position from receiver
+        pitch = self.motor_receiver.receive()
+        # self.head_pitch_controller.set_current(target_pitch)
+
+    def is_done(self) -> bool:
+        done = self.head_pitch_controller.check_is_done()
         return done

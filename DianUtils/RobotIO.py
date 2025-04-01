@@ -123,3 +123,74 @@ class RobotHeightMotorReceiver:
 
     def receive(self) -> float:
         return self.node.obs["jq"][2]
+
+# endregion RobotHeightMotor
+
+# region RobotGripperMotor
+class RobotLGripperMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_value: float):
+        n = self.node
+        n.tctr_left_arm[6] = motor_value
+        n.publish_messages()
+
+class RobotLGripperMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> float:
+        return self.node.obs["jq"][11]
+
+class RobotRGripperMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_value: float):
+        n = self.node
+        n.tctr_right_arm[6] = motor_value
+        n.publish_messages()
+
+class RobotRGripperMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> float:
+        return self.node.obs["jq"][18]
+
+class RobotLRGripperMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_value: np.ndarray):
+        n = self.node
+        n.tctr_left_arm[6] = motor_value[0]
+        n.tctr_right_arm[6] = motor_value[1]
+        n.publish_messages()
+
+class RobotLRGripperMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> float:
+        return self.node.obs["jq"][11]
+
+# endregion RobotGripperMotor
+
+# region RobotHeadPitchMotor
+class RobotHeadPitchMotorSender:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def send(self, motor_value: float):
+        n = self.node
+        n.tctr_head[0] = motor_value
+        n.publish_messages()
+
+class RobotHeadPitchMotorReceiver:
+    def __init__(self, node: RosNode.DianRobotNode):
+        self.node = node
+
+    def receive(self) -> float:
+        return self.node.obs["jq"][3]
