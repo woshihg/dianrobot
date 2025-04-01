@@ -49,6 +49,13 @@ def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
         move_to_anywhere(policy, exec_robot, [policy.R1dst[0], policy.R1dst[1]], 90)
 
     l, r = policy.get_catch_pos_lr(exec_robot.obs)
+    print("l", l)
+    print("r", r)
+    print("lft_arm_ori_pose", policy.lft_arm_ori_pose)
+    print("rgt_arm_ori_pose", policy.rgt_arm_ori_pose)
+    print("height", exec_robot.obs["jq"][2])
+    print("motor_angles_l", exec_robot.obs["jq"][5:11])
+    print("motor_angles_r", exec_robot.obs["jq"][12:18])
     policy.cmd_pos_arm_lr.l_arm_controller \
         .set_robot_height(exec_robot.obs["jq"][2]) \
         .set_motor_angles(np.array(exec_robot.obs["jq"][5:11])) \
@@ -93,7 +100,7 @@ def go_back(policy: DianRobot, exec_robot: DianRobotNode):
     print("准备置位")
     policy.middle_reset(exec_robot)
     print("准备回位置")
-    move_to_anywhere(policy, exec_robot, [-0.09, 0], -140)
+    move_to_anywhere(policy, exec_robot, [0, 0], -135)
     print("准备放置")
     policy.cmd_height.height_controller \
         .set_current(exec_robot.obs["jq"][2]) \
@@ -200,7 +207,16 @@ def main(args=None):
     print("机械臂回到初始位置")
     policy.reset_arm(exec_robot)
     print("观察视角")
-    obs = policy.head_control(obs, exec_robot, 0.2)
+    policy.cmd_head_pitch.head_pitch_controller \
+        .set_current(exec_robot.obs["jq"][4]) \
+        .set_target(0.2) \
+        .set_ratio(0.03)
+    policy.cmd_forward.forward_controller \
+        .set_current(exec_robot.obs["base_position"][:2]) \
+        .set_target([-0.2, -0.2]) \
+        .set_tolerance(0.01) \
+        .set_direction_vec(calc_robot_direction(exec_robot.obs["base_orientation"]))
+    robot_do_muti_cmd([policy.cmd_head_pitch, policy.cmd_forward])
     obs = policy.base_forward(obs, 2, exec_robot, [-0.2, 0, policy.R1dst[2]])
     prop_pos = policy.get_grasp_pos(obs)
     if prop_pos is not None:

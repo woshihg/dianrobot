@@ -38,7 +38,7 @@ class HeightController:
         return self._tolerance
 
     def set_target(self, target):
-        self._target_height = target
+        self._target_height = float(target)
         return self
 
     def set_current(self, current):

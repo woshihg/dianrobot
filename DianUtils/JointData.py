@@ -4,11 +4,17 @@ from discoverse.mmk2 import MMK2FIK
 from scipy.spatial.transform import Rotation
 # 机械臂逆解算
 def _pick_motor_angles(target : Transform3, is_right : bool, my_height: float, cur_angles: np.array) -> np.array :
-    ori_matrix = Rotation.from_euler('zyx',target.get_rot()).as_matrix()
-    angles = MMK2FIK().get_armjoint_pose_wrt_footprint(
-        target.get_pos(), 'pick', 'r' if is_right else 'l', my_height, cur_angles, ori_matrix
-    )
-    return np.array(angles)
+    rot = target.get_rot().copy()
+    for _ in range(10):
+        ori_matrix = Rotation.from_euler('zyx', rot).as_matrix()
+        angles = MMK2FIK().get_armjoint_pose_wrt_footprint(
+            target.get_pos(), 'pick', 'r' if is_right else 'l', my_height, cur_angles, ori_matrix
+        )
+        if angles is not None:
+            return np.array(angles)
+        print("Failed to calculate motor angles, retrying...")
+        rot = rot + np.random.uniform(-0.01, 0.01, size=3)
+    raise Exception("Failed to calculate motor angles, after 10 retries")
 
 class JointData:
     def __init__(self, is_right: bool = False, robot_height: float = 0.0, motor_angles: np.array = np.zeros(6)):

@@ -412,8 +412,8 @@ class DianRobot:
 
         left_arm_target_pose = self.lft_arm_ori_pose + forward
         right_arm_target_pose = self.rgt_arm_ori_pose + forward
-        self.left_arm_target_pose = left_arm_target_pose
-        self.right_arm_target_pose = right_arm_target_pose
+        self.left_arm_target_pose = left_arm_target_pose.copy()
+        self.right_arm_target_pose = right_arm_target_pose.copy()
         return left_arm_target_pose, right_arm_target_pose
 
 
@@ -489,7 +489,7 @@ class DianRobot:
         robot_do(self.cmd_pos_arm_lr)
 
         self.cmd_height.height_controller \
-            .set_target(0) \
+            .set_target(0.) \
             .set_current(robot.obs["jq"][2])
         robot_do(self.cmd_height)
         return
