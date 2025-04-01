@@ -412,7 +412,8 @@ class DianRobot:
 
         left_arm_target_pose = self.lft_arm_ori_pose + forward
         right_arm_target_pose = self.rgt_arm_ori_pose + forward
-
+        self.left_arm_target_pose = left_arm_target_pose
+        self.right_arm_target_pose = right_arm_target_pose
         return left_arm_target_pose, right_arm_target_pose
 
 
@@ -462,51 +463,6 @@ class DianRobot:
         self.rgt_arm_ori_pose[2] -= robot.obs["jq"][2]
         return
 
-    def catch_box(self, observe, robot):
-        step_num = 10
-        left_arm_target_pose = np.array([0, 0, 0])
-        right_arm_target_pose = np.array([0, 0, 0])
-        # x ,y ,z的增量
-        if self.R1info_cabinet_dir == "right":
-            print("base pos:", observe["base_position"])
-            base_pos = [0.605, 0.40]
-            self.x_forward = 0.15 + base_pos[0] - observe["base_position"][0]
-            self.y_forward = 0.01 + base_pos[1] - observe["base_position"][1]
-            self.z_forward = -0.05
-        else:
-            base_pos = [0.370, 0.613]
-            self.x_forward = 0.15 + base_pos[0] - observe["base_position"][0]
-            self.y_forward = -0.01 + base_pos[1] - observe["base_position"][1]
-            self.z_forward = -0.05
-        # 增量
-        forward = np.array([self.x_forward, self.y_forward, self.z_forward])
-
-        for step in range(step_num):
-            left_arm_target_pose = self.lft_arm_ori_pose + forward * step / step_num
-            right_arm_target_pose = self.rgt_arm_ori_pose + forward * step / step_num
-            # print("observe[jq]",observe["jq"])
-            # print("left_arm_target_pose[2]", left_arm_target_pose[2])
-            left_arm_target_euler = np.array([0, 0.93584134, 1.6])
-            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_target_pose, "pick", "l",
-                                                                       observe["jq"][2], np.array(observe["jq"][5:11]),
-                                                                       Rotation.from_euler('zyx',
-                                                                                           left_arm_target_euler).as_matrix())
-            robot.target_control[5:11] = left_arm_joint
-
-            right_arm_target_euler = np.array([0, 0.93584134, -1.6])
-            right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_target_pose, "pick", "r",
-                                                                        observe["jq"][2],
-                                                                        np.array(observe["jq"][12:18]),
-                                                                        Rotation.from_euler('zyx',
-                                                                                            right_arm_target_euler).as_matrix())
-            robot.target_control[12:18] = right_arm_joint
-            observe = self.robot_pause(robot, 1)
-
-        self.left_arm_target_pose = left_arm_target_pose
-        self.right_arm_target_pose = right_arm_target_pose
-        observe = self.gripper_control(observe, robot, "both", "close")
-        return observe
-
     # 移动夹爪至中间位置
     def middle_reset(self, robot):
         left_ori_pose = self.left_arm_target_pose.copy()
@@ -520,14 +476,16 @@ class DianRobot:
             .set_motor_angles(np.array(robot.obs["jq"][5:11])) \
             .set_target_rot(np.array([0, 0.93584134, 1.6])) \
             .set_current_pos(left_ori_pose) \
-            .set_target_pos(left_target_pose)
+            .set_target_pos(left_target_pose) \
+            .set_ratio(0.005)
 
         self.cmd_pos_arm_lr.r_arm_controller \
             .set_robot_height(robot.obs["jq"][2]) \
             .set_motor_angles(np.array(robot.obs["jq"][12:18])) \
             .set_target_rot(np.array([0, 0.93584134, -1.6])) \
             .set_current_pos(right_ori_pose) \
-            .set_target_pos(right_target_pose)
+            .set_target_pos(right_target_pose) \
+            .set_ratio(0.005)
         robot_do(self.cmd_pos_arm_lr)
 
         self.cmd_height.height_controller \
@@ -544,12 +502,20 @@ class DianRobot:
             # observe, pri_observe, rew, ter, info = robot.step(robot.target_control)
         return observe
 
-    def reset_arm(self, observe, robot):
+    def reset_arm(self, robot):
         robot.target_control[5:11] = [-0.0, -0.166, 0.032, 0.0, 1.5708, 2.223]
         robot.target_control[12:18] = [-0.0, -0.166, 0.032, 0.0, -1.5708, -2.223]
         robot.target_control[2] = 0.25
-        observe = self.robot_pause(robot, 100)
-        return observe
+        self.cmd_rot_arm_lr.l_arm_controller \
+            .set_target(robot.target_control[5:11]) \
+            .set_current(np.array(robot.obs["jq"][5:11]))
+
+        self.cmd_rot_arm_lr.r_arm_controller \
+            .set_target(robot.target_control[12:18]) \
+            .set_current(np.array(robot.obs["jq"][12:18]))
+
+        robot_do(self.cmd_rot_arm_lr)
+        return
 
     def head_control(self, observe, robot, target_angle):
         robot.target_control[4] = target_angle

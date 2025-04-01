@@ -13,7 +13,7 @@ class ArmAngleController:
     def calc_current_target(self) -> np.array:
         delta = self._target_angle - self._current_angle
 
-        if np.dot(delta, delta) < 2 * self._ratio:
+        if np.dot(delta, delta) < 2 * (self._ratio ** 2):
             return self._target_angle
 
         # normalize the diff, to keep increment in fixed length
@@ -22,7 +22,7 @@ class ArmAngleController:
 
     def check_is_done(self) -> bool:
         diff_pos = self._target_angle - self._current_angle
-        return np.dot(diff_pos, diff_pos) < self._tolerance
+        return np.dot(diff_pos, diff_pos) < (self._tolerance ** 2)
 
     # region Getters and Setters
 

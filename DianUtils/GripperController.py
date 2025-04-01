@@ -4,8 +4,8 @@ class GripperController:
         # the open size of the gripper ranged form 0 to 1
         self._target_open_size = 0.0
         self._current_open_size = 0.0
-        self._tolerance = 0.0001
-        self._ratio = 0.0001
+        self._tolerance = 0.01
+        self._ratio = 0.01
 
     # @brief 计算当前目标角度
     # @return float 当前最佳的输出角度
@@ -56,7 +56,7 @@ class GripperControlSender:
     def __init__(self):
         pass
 
-    def send(self, height: float) -> None:
+    def send(self, size) -> None:
         pass
 
 class GripperMotorReceiver:

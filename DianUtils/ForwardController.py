@@ -6,7 +6,7 @@ class ForwardController:
         # ranged form -180.0 to 180.0
         self._target_pos = np.array([0.0, 0.0])
         self._current_pos = np.array([0.0, 0.0])
-        self._origin_pos = np.array([0.0, 0.0])
+        self._direction_vec = np.array([0.0, 0.0])
         self._tolerance = 0.01
         self._ratio = 0.5
 
@@ -15,8 +15,7 @@ class ForwardController:
     def calc_current_target(self) -> float:
         delta = self._target_pos - self._current_pos
         abs_delta = np.dot(delta, delta)
-        origin_delta = self._target_pos - self._origin_pos
-        direction = np.dot(delta, origin_delta)
+        direction = np.dot(delta, self._direction_vec)
         if direction < 0:
             abs_delta = -abs_delta
         return abs_delta * 5
@@ -41,8 +40,8 @@ class ForwardController:
     def get_tolerance(self):
         return self._tolerance
 
-    def get_origin_pos(self):
-        return self._origin_pos
+    def get_direction_vec(self):
+        return self._direction_vec
 
     def set_target(self, target: np.array):
         if not isinstance(target, np.ndarray):
@@ -64,10 +63,10 @@ class ForwardController:
         self._tolerance = tolerance
         return self
 
-    def set_origin(self, origin: np.array):
+    def set_direction_vec(self, origin: np.array):
         if not isinstance(origin, np.ndarray):
             origin = np.array(origin)
-        self._origin_pos = origin.copy()
+        self._direction_vec = origin.copy()
         return self
 
     # endregion Getters and Setters

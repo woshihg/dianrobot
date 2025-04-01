@@ -173,8 +173,8 @@ class RobotLRGripperMotorReceiver:
     def __init__(self, node: RosNode.DianRobotNode):
         self.node = node
 
-    def receive(self) -> float:
-        return np.concatenate((self.node.obs["jq"][11], self.node.obs["jq"][18]))
+    def receive(self) -> np.ndarray:
+        return np.array([self.node.obs["jq"][11], self.node.obs["jq"][18]])
 
 # endregion RobotGripperMotor
 

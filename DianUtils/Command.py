@@ -331,7 +331,7 @@ class RobotGrippersCommand(Command):
 
         l_target_open_size = self.l_gripper_controller.calc_current_target()
         r_target_open_size = self.r_gripper_controller.calc_current_target()
-        self.control_sender.send(np.concatenate((l_target_open_size, r_target_open_size)))
+        self.control_sender.send(np.array([l_target_open_size, r_target_open_size]))
         self.l_gripper_controller.set_current(l_target_open_size)
         self.r_gripper_controller.set_current(r_target_open_size)
 

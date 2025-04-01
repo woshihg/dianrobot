@@ -12,6 +12,12 @@ def get_rotation_angle(start, end):
     dy = end[1] - start[1]
     angle = np.arctan2(dy, dx) * 180 / np.pi
     return angle
+# 根据机器人朝向计算机器人二维平面方向向量
+def calc_robot_direction(base_orientation):
+    bo = base_orientation
+    corrected_obs = [bo[1], bo[2], bo[3], bo[0]]
+    euler = R.from_quat(corrected_obs).as_euler('zyx', degrees=False)
+    return np.array([np.cos(euler[0]), np.sin(euler[0])])
 
 def move_to_anywhere(policy: DianRobot, exec_robot: DianRobotNode, dst_pos, dst_angle):
     # 计算运行角度
@@ -26,14 +32,14 @@ def move_to_anywhere(policy: DianRobot, exec_robot: DianRobotNode, dst_pos, dst_
     policy.cmd_forward.forward_controller \
         .set_current(exec_robot.obs["base_position"][:2]) \
         .set_target(dst_pos) \
-        .set_tolerance(0.01) \
-        .set_origin(exec_robot.obs["base_position"][:2])
+        .set_tolerance(0.001) \
+        .set_direction_vec(calc_robot_direction(exec_robot.obs["base_orientation"]))
     robot_do(policy.cmd_forward)
 
     policy.cmd_turn.yaw_controller \
         .set_current(exec_robot.obs["base_orientation"]) \
         .set_target(dst_angle) \
-        .set_tolerance(0.01)
+        .set_tolerance(0.001)
     robot_do(policy.cmd_turn)
 def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
     # 运行到柜子前边
@@ -60,16 +66,29 @@ def catch_box(policy: DianRobot, exec_robot: DianRobotNode):
         .set_target_pos(r)
     robot_do(policy.cmd_pos_arm_lr)
 
+    policy.cmd_grippers.l_gripper_controller \
+        .set_current(exec_robot.obs["jq"][11]) \
+        .set_target(0.0) \
+        .set_ratio(0.01)
+    policy.cmd_grippers.r_gripper_controller \
+        .set_current(exec_robot.obs["jq"][18]) \
+        .set_target(0.0) \
+        .set_ratio(0.01)
+    robot_do(policy.cmd_grippers)
+
+
 def go_back(policy: DianRobot, exec_robot: DianRobotNode):
     if policy.R1info_cabinet_dir == "right":
         target = [policy.R1dst[0] - 0.3, policy.R1dst[1]]
     else:
         target = [policy.R1dst[0], policy.R1dst[1] - 0.3]
+    print("base_position", exec_robot.obs["base_position"])
+    print("target", target)
     policy.cmd_forward.forward_controller \
         .set_current(exec_robot.obs["base_position"][:2]) \
         .set_target(target) \
         .set_tolerance(0.01) \
-        .set_origin(exec_robot.obs["base_position"][:2])
+        .set_direction_vec(calc_robot_direction(exec_robot.obs["base_orientation"]))
     robot_do(policy.cmd_forward)
     print("准备置位")
     policy.middle_reset(exec_robot)
@@ -124,6 +143,32 @@ def move_and_get_box_pos(policy: DianRobot, exec_robot: DianRobotNode, is_first_
     # 等待机器人到位
     time.sleep(1)
 
+def go_to_observe_pos(policy: DianRobot, exec_robot: DianRobotNode):
+    policy.cmd_turn.yaw_controller \
+        .set_current(-90.0) \
+        .set_target(90.0) \
+        .set_tolerance(0.01)
+    robot_do(policy.cmd_turn)
+
+    policy.cmd_forward.forward_controller \
+        .set_current([0.0, 0.0]) \
+        .set_target([0.0, 0.4]) \
+        .set_tolerance(0.01) \
+        .set_direction_vec(calc_robot_direction(exec_robot.obs["base_orientation"]))
+    robot_do(policy.cmd_forward)
+
+    policy.cmd_grippers.l_gripper_controller \
+        .set_current(exec_robot.obs["jq"][11]) \
+        .set_target(0.5)
+    policy.cmd_grippers.r_gripper_controller \
+        .set_current(exec_robot.obs["jq"][18]) \
+        .set_target(0.5)
+    policy.cmd_turn.yaw_controller \
+        .set_current(90.0) \
+        .set_target(0.0) \
+        .set_tolerance(0.01)
+    robot_do_muti_cmd([policy.cmd_grippers, policy.cmd_turn])
+
 def main(args=None):
     rclpy.init(args=args)
     exec_robot = DianRobotNode()
@@ -137,27 +182,8 @@ def main(args=None):
     while exec_robot.task_info is None:
         pass
     policy.solve_rule(exec_robot.task_info)
-    policy.cmd_turn.yaw_controller \
-        .set_current(-90.0) \
-        .set_target(90.0) \
-        .set_tolerance(0.01)
-    robot_do(policy.cmd_turn)
-
-    policy.cmd_forward.forward_controller \
-        .set_current([0.0, 0.0]) \
-        .set_target([0.0, 0.4]) \
-        .set_tolerance(0.01) \
-        .set_origin([0.0, 0.0])
-    robot_do(policy.cmd_forward)
-
-    # 前往观测位置
-    obs = policy.gripper_control(exec_robot.obs, exec_robot, "both", "open")
-    policy.cmd_turn.yaw_controller \
-        .set_current(90.0) \
-        .set_target(0.0) \
-        .set_tolerance(0.01)
-    robot_do(policy.cmd_turn)
-
+    # 前往观察箱子的位置
+    go_to_observe_pos(policy, exec_robot)
     # 通过图片解析箱子位置
     move_and_get_box_pos(policy, exec_robot, is_first_call=True)
     if policy.R1info_cabinet_dir == "left":
@@ -172,7 +198,7 @@ def main(args=None):
     go_back(policy, exec_robot)
 
     print("机械臂回到初始位置")
-    obs = policy.reset_arm(obs, exec_robot)
+    policy.reset_arm(exec_robot)
     print("观察视角")
     obs = policy.head_control(obs, exec_robot, 0.2)
     obs = policy.base_forward(obs, 2, exec_robot, [-0.2, 0, policy.R1dst[2]])
