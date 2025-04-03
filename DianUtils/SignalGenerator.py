@@ -17,6 +17,7 @@ class SignalGenerator:
         return signal
 
 # region Getters and Setters
+
     def get_interval(self):
         return self._interval_s
 
@@ -28,7 +29,11 @@ class SignalGenerator:
 
     def set_time_begin(self, time_begin):
         self.time_begin_s = time_begin
+        
+# endregion Getters and Setters
 
+
+# 返回常量的信号生成器
 class ConstSignalGenerator:
     def __init__(self, const: float = 1.0):
         self.const = const
@@ -43,4 +48,3 @@ class ConstSignalGenerator:
     def set_const(self, const):
         self.const = const
 
-# endregion Getters and Setters

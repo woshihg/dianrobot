@@ -737,7 +737,10 @@ class DianRobot:
 
     # endregion robot control
 
-def robot_do(command: Command, time_s = 60.0):
+# @brief 执行一个命令，直到完成或超时
+# @param command 要执行的命令
+# @param time_s 超时时间，单位为秒
+def robot_do(command: Command, time_s = 60.0) -> None:
     frequency = 24.0
     name = command.description
     start = time.time()
@@ -754,7 +757,10 @@ def robot_do(command: Command, time_s = 60.0):
     else:
         print("timeout command({}) at {}s, cost {}s".format(name, end, end - start))
 
-def robot_do_multi_cmd(commands: list):
+# @brief 执行多个命令，直到所有命令完成
+# @param commands 要执行的命令列表
+# @param time_s 超时时间，单位为秒
+def robot_do_multi_cmd(commands: list) -> None:
     frequency = 24.0
     start = time.time()
     print("start command at {}s".format(start))

@@ -1,3 +1,5 @@
+
+# 相机头部俯仰控制器
 class HeadPitchController:
     def __init__(self):
         self._target_pitch = 0.0

@@ -1,20 +1,25 @@
 import numpy as np
-# 角度控制器，发送插值角度控制信号
+
+
+# @brief 机械臂角度控制器，发送插值角度控制信号
+# @details 机械臂的控制参数是六个电机角(范围在[-pi, pi])，给定目标和当前角度，控制器会给出当前最佳的输出角度
 class ArmAngleController:
     def __init__(self):
-        # ranged form -pi to pi
         self._target_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._current_angle = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._tolerance = 0.1  # dot product tolerance
         self._ratio = 0.1
 
-    # @brief 计算当前目标角度
-    # @return float 当前最佳的输出角度
+    # @brief 计算当前最佳的输出角度
+    # @return np.array 六个电机的角度
     def calc_current_target(self) -> np.array:
         delta = self._target_angle - self._current_angle
-        if np.dot(delta, delta) < 2 * (self._ratio ** 2):
+        
+        # if just last step, return target angle
+        just_last_step = 2 * (self._ratio ** 2)
+        if np.dot(delta, delta) < just_last_step:
             return self._target_angle
-
+        
         # normalize the diff, to keep increment in fixed length
         direction = delta / np.linalg.norm(delta)
         return self._current_angle + direction * self._ratio

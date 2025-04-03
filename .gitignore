@@ -1,0 +1,13 @@
+# IDE files
+.vscode/
+.idea/
+.vs/
+
+# Build files
+build/
+dist/
+out/
+devel/
+
+# other python files to boost intelliSense
+TempPyModules/
