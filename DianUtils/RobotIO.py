@@ -3,7 +3,6 @@ from scipy.spatial.transform import Rotation as R
 
 import RosNode
 
-
 # region RobotYawMotor
 class RobotYawMotorSender:
     def __init__(self, node : RosNode.DianRobotNode):
@@ -25,7 +24,8 @@ class RobotYawMotorReceiver:
         euler = R.from_quat(corrected_obs).as_euler('zyx', degrees=True)
         return euler[0]
 
- # endregion RobotYawMotor
+# endregion RobotYawMotor
+
 # region RobotForwardMotor
 class RobotForwardMotorSender:
     def __init__(self, node: RosNode.DianRobotNode):
@@ -194,3 +194,5 @@ class RobotHeadPitchMotorReceiver:
 
     def receive(self) -> float:
         return self.node.obs["jq"][4]
+# endregion RobotHeadPitchMotor
+

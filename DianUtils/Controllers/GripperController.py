@@ -1,4 +1,6 @@
-# 夹爪控制
+
+
+# 夹爪控制，用于控制夹爪的开合
 class GripperController:
     def __init__(self):
         # the open size of the gripper ranged form 0 to 1

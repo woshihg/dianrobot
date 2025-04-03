@@ -1,14 +1,8 @@
 from docutils.nodes import note
 
-from DianUtils.ForwardController import *
-from DianUtils.YawController import *
-from DianUtils.SignalGenerator import *
-from DianUtils.ArmPositionController import *
-from DianUtils.ArmAngleController import *
-from DianUtils.HeightController import *
-from DianUtils.GripperController import *
-from DianUtils.HeadPitchController import *
+from DianUtils.Controllers import *
 
+from functools import wraps
 
 class TimeSpan:
     def __init__(self, begin: float = time.time(), duration_s: float = 0.7):

@@ -1,7 +1,6 @@
 import numpy as np
 from DianUtils.JointData import *
-from DianUtils.Transform3 import Transform3
-from discoverse.mmk2 import MMK2FIK
+from DianUtils.Transform3 import *
 
 
 # 角度控制器，给定目标的transform，发送电机角度控制信号
@@ -19,7 +18,9 @@ class ArmPositionController:
         tar_pos = self._target.get_pos()
         diff_pos = tar_pos - cur_pos
 
-        if np.dot(diff_pos, diff_pos) < 2 * (self._ratio**2):
+        # if the diff is small, just return the target pos
+        just_last_step = 2 * (self._ratio**2)
+        if np.dot(diff_pos, diff_pos) < just_last_step:
             return tar_pos
 
         # normalize the diff, to keep increment in fixed length

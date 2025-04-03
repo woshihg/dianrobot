@@ -1,6 +1,6 @@
 import numpy as np
 
-# 角度控制器，发送插值角度控制信号
+# 前后移动控制，给定当前方向，当前位置和目标位置，计算电机值
 class ForwardController:
     def __init__(self):
         # ranged form -180.0 to 180.0
@@ -10,8 +10,6 @@ class ForwardController:
         self._tolerance = 0.01
         self._ratio = 0.5
 
-    # @brief 计算当前目标角度
-    # @return float 当前最佳的输出电机值
     def calc_current_target(self) -> float:
         delta = self._target_pos - self._current_pos
         abs_delta = np.dot(delta, delta)

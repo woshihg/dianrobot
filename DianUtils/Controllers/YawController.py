@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-
 def _cut_angle(angle: float) -> float:
     while angle > 180.0:
         angle -= 360.0

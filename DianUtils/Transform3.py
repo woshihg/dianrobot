@@ -2,7 +2,7 @@ import numpy as np
 from hgext.fsmonitor import poststatus
 
 
-# 3D transform class
+# 包含三维物体位置与旋转
 class Transform3:
     def __init__(self, pos=np.array([0.0, 0.0, 0.0]), rot=np.array([0.0, 0.0, 0.0])):
         self._pos = pos  # position
