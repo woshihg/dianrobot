@@ -1,4 +1,4 @@
-docker run -id --name s2r2025_server_1 --gpus all \
+docker run -id --name s2r2025_server --gpus all \
     --privileged=true \
     --network=host \
     --ipc=host \
@@ -10,7 +10,7 @@ docker run -id --name s2r2025_server_1 --gpus all \
     -e NVIDIA_DRIVER_CAPABILITIES=all \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -v /dev/input:/dev/input \
-    discoverse/s2r2025_server:v1.4 bash
+    discoverse/s2r2025_server:v1.5 bash
 
 xhost +
 

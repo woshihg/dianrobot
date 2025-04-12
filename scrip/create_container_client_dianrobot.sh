@@ -9,7 +9,8 @@ docker run -id --name dianrobot --gpus all \
     -e QT_X11_NO_MITSHM=1 \
     -e NVIDIA_DRIVER_CAPABILITIES=all \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
-    dramatichg/s2r2025:v1.1 bash
+    -v /home/dianrobot/PycharmProjects/dianrobot:/home/workspace \
+    dramatichg/s2r2025:v2.0 bash
 
 xhost +
 

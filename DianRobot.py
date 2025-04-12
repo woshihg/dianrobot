@@ -249,35 +249,42 @@ class DianRobot:
     def catch_prop(self, pos, observe, robot):
         prop_bias = [0.03, 0, 0.1]
         prop_height = -0.1
+        target_open = 1.0
+        # 夹物体时的开合度
+        target_close = 0.0
         if self.R1info_prop_name == "carton":
+            # height 0.9781288889181835
+            print("抓取 carton")
             prop_bias = [0.04, 0, 0.1]
-            prop_height = -0.15
-            self.cmd_grippers.l_gripper_controller \
-                .set_target(1.0) \
-                .set_current(observe["jq"][11])
-            self.cmd_grippers.r_gripper_controller \
-                .set_target(1.0) \
-                .set_current(observe["jq"][18])
+            if self.R1info_table_dir == "left":
+                prop_height = -0.08
+                print("left arm")
+            else:
+                prop_height = -0.08
+                print("right arm")
+            target_open = 1.0
+            target_close = 0.15
         elif self.R1info_prop_name == "disk":
+            print("抓取 disk")
             prop_bias = [0.03, 0, 0.1]
             prop_height = -0.1
-            self.cmd_grippers.l_gripper_controller \
-                .set_target(0.4) \
-                .set_current(observe["jq"][11])
-            self.cmd_grippers.r_gripper_controller \
-                .set_target(0.4) \
-                .set_current(observe["jq"][18])
+            target_open = 0.4
+            target_close = 0.01
         elif self.R1info_prop_name == "sheet":
+            print("抓取 sheet")
             prop_bias = [0.03, 0, 0.1]
             prop_height = -0.1
-            self.cmd_grippers.l_gripper_controller \
-                .set_target(0.4) \
-                .set_current(observe["jq"][11])
-            self.cmd_grippers.r_gripper_controller \
-                .set_target(0.4) \
-                .set_current(observe["jq"][18])
+            target_open = 0.4
+            target_close = 0.0
+        self.cmd_grippers.l_gripper_controller \
+            .set_target(target_open) \
+            .set_current(observe["jq"][11])
+        self.cmd_grippers.r_gripper_controller \
+            .set_target(target_open) \
+            .set_current(observe["jq"][18])
         robot_do(self.cmd_grippers)
         if self.R1info_table_dir == "left":
+            # 预制机械臂的位置
             left_arm_ori_pose = pos + prop_bias
             left_arm_target_euler = [0., 0.5, -np.pi]
             left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_ori_pose, "pick", "l",
@@ -292,40 +299,6 @@ class DianRobot:
                                                                             np.array(observe["jq"][12:18]),
                                                                             Rotation.from_euler('zyx',
                                                                                                 right_arm_target_euler).as_matrix())
-                if right_arm_joint is None:
-                    raise ValueError("Failed to calculate motor angles")
-                # self.cmd_rot_arm_r.arm_controller \
-                #     .set_target(right_arm_joint) \
-                #     .set_current(observe["jq"][12:18])
-                # robot_do(self.cmd_rot_arm_r)
-                for i in range(6):
-                    robot.tctr_right_arm[i] = float(right_arm_joint[i])
-                robot.publish_messages()
-                time.sleep(2)
-                right_arm_target_pose = right_arm_ori_pose.copy()
-                right_arm_target_pose[2] = right_arm_target_pose[2] + prop_height
-                self.cmd_pos_arm_r.arm_controller \
-                    .set_robot_height(robot.obs["jq"][2]) \
-                    .set_motor_angles(np.array(observe["jq"][12:18])) \
-                    .set_target_rot(np.array(right_arm_target_euler)) \
-                    .set_current_pos(right_arm_ori_pose) \
-                    .set_ratio(0.001) \
-                    .set_target_pos(right_arm_target_pose)
-                robot_do(self.cmd_pos_arm_r)
-                time.sleep(2)
-                self.cmd_grippers.r_gripper_controller \
-                    .set_target(0.0) \
-                    .set_current(observe["jq"][18])
-                robot_do(self.cmd_grippers)
-                time.sleep(2)
-                self.cmd_height.height_controller \
-                    .set_current(observe["jq"][2]) \
-                    .set_target(-0.1) \
-                    .set_ratio(0.005) \
-                    .set_tolerance(0.005)
-                robot_do(self.cmd_height)
-                time.sleep(2)
-                return
             # self.cmd_rot_arm_l.arm_controller \
             #     .set_target(left_arm_joint) \
             #     .set_current(observe["jq"][5:11])
@@ -333,9 +306,14 @@ class DianRobot:
             for i in range(6):
                 robot.tctr_left_arm[i] = float(left_arm_joint[i])
             robot.publish_messages()
+            #
             time.sleep(2)
             left_arm_target_pose = left_arm_ori_pose.copy()
-            left_arm_target_pose[2] = left_arm_target_pose[2] + prop_height
+            if self.R1info_prop_name == "carton":
+                left_arm_target_pose[2] = 0.9691288889181835
+            else:
+                left_arm_target_pose[2] = left_arm_target_pose[2] + prop_height
+            #print("left_arm_target_pose[2]", left_arm_target_pose[2])
             robot.target_control[5:11] = left_arm_joint
             self.cmd_pos_arm_l.arm_controller \
                 .set_robot_height(robot.obs["jq"][2]) \
@@ -347,16 +325,20 @@ class DianRobot:
             robot_do(self.cmd_pos_arm_l)
             time.sleep(2)
             self.cmd_grippers.l_gripper_controller \
-                .set_target(0.0) \
+                .set_target(target_close) \
                 .set_current(observe["jq"][11])
             robot_do(self.cmd_grippers)
             time.sleep(2)
-            self.cmd_height.height_controller \
-                .set_current(observe["jq"][2]) \
-                .set_target(-0.1) \
-                .set_ratio(0.005) \
-                .set_tolerance(0.005)
-            robot_do(self.cmd_height)
+            left_arm_target_pose1 = left_arm_target_pose.copy()
+            left_arm_target_pose1[2] = left_arm_target_pose[2] + 0.2
+            self.cmd_pos_arm_l.arm_controller \
+                .set_robot_height(robot.obs["jq"][2]) \
+                .set_motor_angles(np.array(observe["jq"][5:11])) \
+                .set_target_rot(np.array(left_arm_target_euler)) \
+                .set_current_pos(left_arm_target_pose) \
+                .set_ratio(0.001) \
+                .set_target_pos(left_arm_target_pose1)
+            robot_do(self.cmd_pos_arm_l)
             time.sleep(2)
         else:
             right_arm_ori_pose = pos + prop_bias
@@ -365,45 +347,6 @@ class DianRobot:
                                                                         observe["jq"][2], np.array(observe["jq"][12:18]),
                                                                         Rotation.from_euler('zyx',
                                                                                             right_arm_target_euler).as_matrix())
-            if right_arm_joint is None:
-                left_arm_ori_pose = pos + prop_bias
-                left_arm_target_euler = [0., 0.3, -np.pi]
-                left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_ori_pose, "pick", "l",
-                                                                           observe["jq"][2],
-                                                                           np.array(observe["jq"][5:11]),
-                                                                           Rotation.from_euler('zyx',
-                                                                                               left_arm_target_euler).as_matrix())
-                if left_arm_joint is None:
-                    raise ValueError("Failed to calculate motor angles")
-                for i in range(6):
-                    robot.tctr_left_arm[i] = float(left_arm_joint[i])
-                robot.publish_messages()
-                time.sleep(2)
-                left_arm_target_pose = left_arm_ori_pose.copy()
-                left_arm_target_pose[2] = left_arm_target_pose[2] + prop_height
-                robot.target_control[5:11] = left_arm_joint
-                self.cmd_pos_arm_l.arm_controller \
-                    .set_robot_height(robot.obs["jq"][2]) \
-                    .set_motor_angles(np.array(observe["jq"][5:11])) \
-                    .set_target_rot(np.array(left_arm_target_euler)) \
-                    .set_current_pos(left_arm_ori_pose) \
-                    .set_ratio(0.001) \
-                    .set_target_pos(left_arm_target_pose)
-                robot_do(self.cmd_pos_arm_l)
-                time.sleep(2)
-                self.cmd_grippers.l_gripper_controller \
-                    .set_target(0.0) \
-                    .set_current(observe["jq"][11])
-                robot_do(self.cmd_grippers)
-                time.sleep(2)
-                self.cmd_height.height_controller \
-                    .set_current(observe["jq"][2]) \
-                    .set_target(-0.1) \
-                    .set_ratio(0.005) \
-                    .set_tolerance(0.005)
-                robot_do(self.cmd_height)
-                time.sleep(2)
-                return
             # self.cmd_rot_arm_r.arm_controller \
             #     .set_target(right_arm_joint) \
             #     .set_current(observe["jq"][12:18])
@@ -413,7 +356,11 @@ class DianRobot:
             robot.publish_messages()
             time.sleep(2)
             right_arm_target_pose = right_arm_ori_pose.copy()
-            right_arm_target_pose[2] = right_arm_target_pose[2] + prop_height
+            if self.R1info_prop_name == "carton":
+                right_arm_target_pose[2] = 0.9691288889181835
+            else:
+                right_arm_target_pose[2] = right_arm_target_pose[2] + prop_height
+            #print("right_arm_target_pose[2]", right_arm_target_pose[2])
             self.cmd_pos_arm_r.arm_controller \
                 .set_robot_height(robot.obs["jq"][2]) \
                 .set_motor_angles(np.array(observe["jq"][12:18])) \
@@ -424,17 +371,22 @@ class DianRobot:
             robot_do(self.cmd_pos_arm_r)
             time.sleep(2)
             self.cmd_grippers.r_gripper_controller \
-                .set_target(0.0) \
-                .set_current(observe["jq"][18])
+                .set_target(target_close) \
+                .set_current(observe["jq"][11])
             robot_do(self.cmd_grippers)
             time.sleep(2)
-            self.cmd_height.height_controller \
-                .set_current(observe["jq"][2]) \
-                .set_target(-0.1) \
-                .set_ratio(0.005) \
-                .set_tolerance(0.005)
-            robot_do(self.cmd_height)
+            right_arm_target_pose1 = right_arm_target_pose.copy()
+            right_arm_target_pose1[2] = right_arm_target_pose1[2] + 0.2
+            self.cmd_pos_arm_r.arm_controller \
+                .set_robot_height(robot.obs["jq"][2]) \
+                .set_motor_angles(np.array(observe["jq"][12:18])) \
+                .set_target_rot(np.array(right_arm_target_euler)) \
+                .set_current_pos(right_arm_target_pose) \
+                .set_ratio(0.001) \
+                .set_target_pos(right_arm_target_pose1)
+            robot_do(self.cmd_pos_arm_r)
             time.sleep(2)
+
         return
     def put_prop(self, robot):
         # self.cmd_forward.forward_controller \
@@ -703,6 +655,7 @@ class DianRobot:
         return
 
     def solve_rule(self, describe):
+        #print("describe", describe)
         round_num = re.search(r"round(\w+): (\w+)", describe)
         if round_num and round_num.group(1) == "1":
             match = re.search(r'Take the (\w+) from the (\w+) floor of the (\w+) cabinet, '
