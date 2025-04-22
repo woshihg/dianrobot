@@ -1,5 +1,6 @@
 from discoverse.mmk2 import MMK2FIK
 from ultralytics import YOLO
+
 import re
 import cv2
 from scipy.spatial.transform import Rotation as R
@@ -58,6 +59,16 @@ def get_cam_t(obs):
     print("euler", euler)
     return trans_agv_to_head_cam
 
+def get_cam_to_world(obs):
+    cam_to_agv = get_cam_t(obs)
+    # 计算相机坐标系到世界坐标系的变换矩阵
+    agv_to_world = create_transform_matrix(obs["base_position"],obs["base_orientation"])
+    cam_to_world = agv_to_world @ cam_to_agv
+    print("cam_to_world", cam_to_world)
+    return cam_to_world
+
+#得到物体的世界坐标
+
 def _preprocess_image(img):
     """图像增强处理"""
     # CLAHE对比度增强
@@ -86,7 +97,9 @@ class DianRobot:
         self.R1info_floor_idx = ""
         self.R1info_cabinet_dir = ""
         self.R1info_table_dir = ""
-        self.camera_intrinsic = [[327.09, 0, 320], [0, 327.09, 240], [0, 0, 1]]
+        self.R1info_put_down_obj = ""
+        self.R1info_put_down_pose = ""
+        self.camera_intrinsic = [[575.29, 0, 320], [0, 575.29, 240], [0, 0, 1]]
         # 第一轮游戏箱子的目标位置(底盘位置+物体高度)
         self.R1dst = [0., 0., 0.]
         # 第一轮游戏箱子在橱柜的左右
@@ -105,12 +118,14 @@ class DianRobot:
             "left": (0.4, 0.62),
             "right": (0.62, 0.4)
         }
-        model_path = "/home/workspace/best.pt"
+        model_path = "/home/workspace1/best.pt"
         self.cabinet_top = 3  # 柜体顶部边距（像素距离）
         self.cabinet_bottom = 5  # 柜体底部边距（像素距离）
         self.model = YOLO(model_path)
-        prize_model_path = "/home/workspace/prize_m.pt"
+        prize_model_path = "/home/workspace1/prize_m.pt"
         self.grasp_model = YOLO(prize_model_path)
+        detect_model_path = "detect.pt"
+        self.detect_model = YOLO(detect_model_path)
 
         # region init cmd
         self.cmd_turn = TurnRobotCommand()
@@ -418,10 +433,10 @@ class DianRobot:
         time.sleep(2)
         # 松开夹爪
         self.cmd_grippers.l_gripper_controller \
-            .set_target(0.5) \
+            .set_target(1.0) \
             .set_current(robot.obs["jq"][11])
         self.cmd_grippers.r_gripper_controller \
-            .set_target(0.5) \
+            .set_target(1.0) \
             .set_current(robot.obs["jq"][18])
         robot_do(self.cmd_grippers)
         time.sleep(2)
@@ -471,8 +486,9 @@ class DianRobot:
     def _process_position(self, img, results):
         """处理目标物体位置判断"""
         h, w = img.shape[:2]
+        cv2.imwrite("detect2.jpg", img)
         effective_height = h - self.cabinet_top - self.cabinet_bottom
-        layer_height = effective_height // 5
+        layer_height = effective_height // 3
 
         for result in results:
             for box in result.boxes:
@@ -489,7 +505,7 @@ class DianRobot:
                 bottom_start = h - self.cabinet_bottom
                 relative_y = bottom_start - center_y
                 layer_idx = min(4, max(0, int(relative_y // layer_height)))
-                self.R1info_floor_idx = ["第1层", "second", "third", "fourth", "第5层"][layer_idx]
+                self.R1info_floor_idx = ["second", "third", "fourth"][layer_idx]
                 self.R1dst[2] = self.floor_height.get(self.R1info_floor_idx)
                 print(f"Detected object at {self.R1info_floor_idx}")
 
@@ -678,6 +694,8 @@ class DianRobot:
             if match:
                 self.R1info_prop_name = match.group(1)
                 self.R1info_table_dir = "left"
+                self.R1info_put_down_pose = match.group(2)
+                self.R1info_put_down_obj = match.group(3)
 
         elif round_num and round_num.group(1) == "3":
             # match = re.search(r'Find another prop as same as the one in the drawer top layer, '
@@ -688,7 +706,65 @@ class DianRobot:
 
         return
 
-    # endregion robot control
+    def get_world_coordinates(self, obs):
+
+        print('start detect')
+        path = 'classify.jpg'
+        rgb_img = obs["img"][0]
+        cv2.imwrite(path, rgb_img)
+
+        results = self.detect_model(rgb_img, save=True)
+        print("results")
+        result = results[0]
+        trans_cam_to_world = get_cam_t(obs)
+
+        class_dict = {0: "drawer", 1: "teacup", 2: "timeclock", 3: "kettle", 4: "xbox", 5: "yellow_bowl", 6: "scissors",
+                      7: "plate", 8: "book", 9: "apple"}
+        world_coordinates = {}
+        fx = self.camera_intrinsic[0][0]
+        fy = self.camera_intrinsic[1][1]
+        cx = self.camera_intrinsic[0][2]
+        cy = self.camera_intrinsic[1][2]
+        if result.boxes is not None:  # 确保有检测结果
+            for box in result.boxes:
+                cls_id = int(box.cls)  # 获取类别ID
+                if cls_id not in class_dict:
+                    continue  # 跳过未定义的类别
+
+                # 获取检测框中心点
+                x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())  # 边界框坐标
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+
+                # 获取深度值
+                depth_map = obs["depth"]  # 深度图
+                print(depth_map.shape)
+
+                # 获取深度值
+                depth = depth_map[center_y, center_x]
+
+                # 将像素坐标转换为相机坐标系
+                z = depth / 1000.0
+                x = (center_x - cx) * z / fx
+                y = (center_y - cy) * z / fy
+                camera_coords = np.array([x, y, z])
+
+
+                # 将相机坐标系转换为世界坐标系
+                camera_coords_homogeneous = np.append(camera_coords, 1)  # 转为齐次坐标
+                world_coords = trans_cam_to_world @ camera_coords_homogeneous
+                world_coords = world_coords[:3]  # 转为非齐次坐标
+
+                # 将结果存入字典
+                class_name = class_dict[cls_id]
+                world_coordinates[class_name] = world_coords.tolist()
+
+        return world_coordinates
+
+
+
+
+# endregion robot control
 
 def robot_do(command: Command, time_s = 60.0):
     frequency = 24.0

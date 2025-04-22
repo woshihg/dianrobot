@@ -90,7 +90,8 @@ class DianRobotNode(Node):
         self.publisher_cmd_vel.publish(twist_msg)
 
         float_array_msg_head = Float64MultiArray()
-        float_array_msg_head.data = self.tctr_head
+        #float_array_msg_head.data = self.tctr_head
+        float_array_msg_head.data = [float(x) for x in self.tctr_head]
         self.publisher_head.publish(float_array_msg_head)
 
         float_array_msg_left_arm = Float64MultiArray()

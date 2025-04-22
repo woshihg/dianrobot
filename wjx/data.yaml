@@ -1,0 +1,17 @@
+train: /home/dianrobot/PycharmProjects/dianrobot/wjx/VOCdevkit/train  # train images (relative to 'path') 128 images
+val: /home/dianrobot/PycharmProjects/dianrobot/wjx/VOCdevkit/val  # val images (relative to 'path') 128 images
+test: /home/dianrobot/PycharmProjects/dianrobot/wjx/VOCdevkit/test
+
+nc: 10  # 类别数量
+
+names:
+  - drawer
+  - teacup
+  - clock
+  - kettle
+  - xbox_controller
+  - bowl
+  - scissors
+  - plate
+  - book
+  - apple

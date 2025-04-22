@@ -199,6 +199,92 @@ def go_to_observe_pos(policy: DianRobot, exec_robot: DianRobotNode):
         .set_tolerance(0.01)
     robot_do_multi_cmd([policy.cmd_grippers, policy.cmd_turn])
 
+def put_down_prop_at_place(policy: DianRobot, exec_robot: DianRobotNode):
+    # 设置一个观测高度和角度
+    policy.cmd_head_pitch.head_pitch_controller \
+        .set_current(exec_robot.obs["jq"][2]) \
+        .set_target(3.14 * (20 / 180)) \
+        .set_tolerance(0.1)
+    robot_do(policy.cmd_head_pitch)
+    obj = policy.R1info_put_down_obj
+    pose_to_obj = policy.R1info_put_down_pose
+
+    move_to_anywhere(policy, exec_robot, [0.3, 0.3], -135)
+
+    cls_coordinates = policy.get_world_coordinates(exec_robot.obs)
+    if obj in cls_coordinates:
+        obj_place = cls_coordinates[obj]
+        move_to_anywhere(policy, exec_robot, [0, obj_place[1]], 270)
+        cls_coordinates = policy.get_world_coordinates(exec_robot.obs)
+        obj_place = cls_coordinates[obj]
+        des_place = obj_place.copy()
+        if pose_to_obj == "left":
+            des_place[1] += 0.1
+        if pose_to_obj == "right":
+            des_place[1] -= 0.1
+        if pose_to_obj == "front":
+            des_place[0] -= 0.1
+        if pose_to_obj == "back":
+            des_place[0] += 0.1
+        print(obj_place, pose_to_obj)
+        if policy.R1info_table_dir == "left":
+            prop_bias = np.array([0.0, 0.0, 0.1])
+            left_arm_ori_pose = des_place + prop_bias
+            left_arm_target_euler = [0., 0.5, -np.pi]
+            left_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(left_arm_ori_pose, "pick", "l",
+                                                                       exec_robot.obs["jq"][2], np.array(exec_robot.obs["jq"][5:11]),
+                                                                       Rotation.from_euler('zyx',left_arm_target_euler).as_matrix())
+
+            for i in range(6):
+                exec_robot.tctr_left_arm[i] = float(left_arm_joint[i])
+            exec_robot.publish_messages()
+
+            time.sleep(2)
+
+            policy.cmd_grippers.l_gripper_controller \
+                .set_target(1) \
+                .set_current(exec_robot.obs["jq"][11])
+            robot_do(policy.cmd_grippers)
+        else:
+            prop_bias = np.array([0.0, 0.0, 0.1])
+            right_arm_ori_pose = des_place + prop_bias
+            right_arm_target_euler = [0., 0.5, np.pi]  # Adjusted for the right arm
+            right_arm_joint = MMK2FIK().get_armjoint_pose_wrt_footprint(right_arm_ori_pose, "pick", "r",
+                                                                        exec_robot.obs["jq"][2],
+                                                                        np.array(exec_robot.obs["jq"][12:18]),
+                                                                        Rotation.from_euler('zyx',
+                                                                                            right_arm_target_euler).as_matrix())
+
+            for i in range(6):
+                exec_robot.tctr_right_arm[i] = float(right_arm_joint[i])  # Adjusted for the right arm
+            exec_robot.publish_messages()
+
+            time.sleep(2)
+
+            policy.cmd_grippers.r_gripper_controller \
+                .set_target(1) \
+                .set_current(exec_robot.obs["jq"][18])  # Adjusted for the right gripper
+            robot_do(policy.cmd_grippers)
+
+    else:
+        policy.cmd_turn.yaw_controller \
+            .set_current(90.0) \
+            .set_target(220.0) \
+            .set_tolerance(0.01)
+        robot_do(policy.cmd_turn)
+        cls_coordinates = policy.get_world_coordinates(exec_robot.obs)
+        if obj in cls_coordinates:
+            obj_place = cls_coordinates[obj]
+        else:
+            print("没有找到物体")
+            return
+
+
+
+
+
+
+
 def main(args=None):
     rclpy.init(args=args)
     exec_robot = DianRobotNode()
@@ -244,7 +330,9 @@ def main(args=None):
         robot_do(policy.cmd_height)
         time.sleep(2)
         policy.catch_prop(prop_pos, exec_robot.obs, exec_robot)
-        policy.put_prop(exec_robot)
+        #policy.put_prop(exec_robot)
+        put_down_prop_at_place(policy, exec_robot)
+
     spin_thead.join()
 
 
